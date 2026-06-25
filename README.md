@@ -1,2 +1,1 @@
-# backpacker-buddy
-All-in-one trip planner for backpackers — plan and book budget-friendly flights, stays, and routes with the most flexible cancellation
+ Backpacker Buddy turns "I want to go everywhere on almost nothing" into a real plan. Give it your budget and your dream destinations, and it serves up the smartest flights, the best hostels, and the routes that tie them together — prioritizing flexible cancellation so your plans stay as free as you are. Less time planning, more time gone.
