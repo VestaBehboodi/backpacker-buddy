@@ -194,6 +194,49 @@ ol.legs li:last-child { border-bottom: none; }
 input[type="range"] { accent-color: var(--brand); padding: 0; }
 .range-value { font-weight: 800; color: var(--brand); }
 
+.region-chip {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  margin-left: 0.5rem;
+}
+
+.fit-badge {
+  font-weight: 700;
+  font-size: 0.92rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 10px;
+  margin-bottom: 0.8rem;
+}
+.fit-yes { background: var(--good); color: var(--brand-dark); border: 1px solid var(--brand); }
+.fit-partial { background: var(--warn); color: var(--accent-dark); border: 1px solid var(--accent); }
+.fit-no { background: var(--warn); color: var(--accent-dark); border: 1px dashed var(--accent); }
+
+.check-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  padding: 0.6rem 0;
+}
+.check-field input[type="checkbox"] { width: 1.1rem; height: 1.1rem; accent-color: var(--brand); cursor: pointer; }
+
+.flex-intro { border-left: 5px solid var(--accent); }
+.flex-intro p { margin-bottom: 0; }
+.flex-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+.flex-card { margin-bottom: 0; }
+ul.flex-list { padding-left: 1.1rem; margin: 0.4rem 0 0; }
+ul.flex-list li { margin-bottom: 0.65rem; font-size: 0.94rem; }
+ul.flex-list li:last-child { margin-bottom: 0; }
+
 #hacks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
 .hack-card { margin-bottom: 0; }
 .hack-card h3 { font-size: 1.05rem; }

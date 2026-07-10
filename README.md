@@ -2,14 +2,14 @@
 
 Backpacker Buddy turns "I want to go everywhere on almost nothing" into a real plan. Give it your budget and your dream destinations, and it serves up the smartest flights, the best hostels, and the routes that tie them together — prioritizing flexible cancellation so your plans stay as free as you are. Less time planning, more time gone.
 
-It's a zero-dependency static web app that acts as your personal budget travel agent for the **California ↔ Australia ↔ Southeast Asia** backpacking circuit.
+It's a zero-dependency static web app that acts as your personal budget travel agent — worldwide, with extra-deep coverage of the **California ↔ Australia ↔ Southeast Asia** circuit.
 
 ## Features
 
-- **✈️ Flights** — Curated deal intelligence for 30+ budget routes (Jetstar, AirAsia, VietJet, Scoot, Cebu Pacific and friends): typical sale fares, which airlines fly the route cheapest, and route-specific hacks. One click opens live prices for your exact dates on Google Flights, Skyscanner, and Kiwi.com.
-- **🛏️ Stays** — Per-city price intel for hostels, guesthouses, budget hotels and Airbnbs across 25 backpacker hubs, with neighbourhood recommendations, a "clean & comfy" review-filter formula, and pre-filtered searches on Hostelworld, Booking.com, Agoda, and Airbnb.
-- **🗺️ Route Planner** — Three field-tested route strategies (Reverse Loop, Classic Southbound, Perth Back Door) with leg-by-leg cost estimates. Set your trip length and travel style and it totals each route and crowns the cheapest — with the reasoning for *why* it saves money.
-- **💡 Deal Hacks** — The evergreen playbook: budget-airline sale calendars, carry-on math, land-vs-air rules of thumb, visa costs, seasonal timing, and how to avoid hidden card fees.
+- **✈️ Flights** — Search any two places on Earth. Curated deal intelligence for 30+ budget routes (Jetstar, AirAsia, VietJet, Scoot, Cebu Pacific and friends): typical sale fares, which airlines fly the route cheapest, and route-specific hacks — plus regional budget-carrier intel for Europe, Latin America, South Asia and East Asia. One click opens live prices for your exact dates on Google Flights, Skyscanner, and Kiwi.com.
+- **🛏️ Stays** — Per-city price intel for hostels, guesthouses, budget hotels and Airbnbs across ~50 backpacker hubs worldwide, with neighbourhood recommendations, a "clean & comfy" review-filter formula, a **free-cancellation-only** toggle, and pre-filtered searches on Hostelworld, Booking.com, Agoda, and Airbnb (any city works, even without curated intel).
+- **🗺️ Route Planner** — Six field-tested route strategies across Australia+SEA, Latin America, South Asia and Europe, with leg-by-leg cost estimates. Set your trip length, travel style and **total budget** — it totals each route, crowns the cheapest, and tells you whether your budget fits (and how many months it would actually fund).
+- **💡 Deal Hacks** — A featured **"Stay flexible"** guide (how to book flights and beds you're allowed to cancel — the backpacker's superpower) plus the evergreen playbook: sale calendars, carry-on math, land-vs-air rules of thumb, visa costs, seasonal timing, and hidden card fees.
 
 ## Running it
 

@@ -7,12 +7,29 @@ const $$ = (sel) => document.querySelectorAll(sel);
 const fmt = (n) => "$" + Math.round(n).toLocaleString("en-US");
 const fmtRange = ([a, b]) => `${fmt(a)}–${fmt(b)}`;
 
-function cityByCode(code) {
+/* Resolve free-typed text or a datalist pick ("Lisbon, Portugal (LIS)")
+   to { code, name, region }. code/region may be null for unknown places. */
+function resolveCity(text) {
+  const raw = (text || "").trim();
+  if (!raw) return null;
+
+  const codeMatch = raw.match(/\(([A-Za-z]{3})\)\s*$/);
+  const bareCode = /^[A-Za-z]{3}$/.test(raw) ? raw.toUpperCase() : null;
+  const code = codeMatch ? codeMatch[1].toUpperCase() : bareCode;
+
   for (const region of REGIONS) {
-    const hit = region.cities.find((c) => c.code === code);
-    if (hit) return { ...hit, region: region.id, regionName: region.name };
+    for (const c of region.cities) {
+      if (code && c.code === code) return { ...c, region: region.id, regionName: region.name };
+    }
   }
-  return null;
+  const lower = raw.toLowerCase();
+  for (const region of REGIONS) {
+    for (const c of region.cities) {
+      if (c.name.toLowerCase().includes(lower)) return { ...c, region: region.id, regionName: region.name };
+    }
+  }
+  // Unknown place — keep what the user typed.
+  return { code, name: raw.replace(/\s*\([A-Za-z]{3}\)\s*$/, ""), region: null, regionName: null };
 }
 
 function corridorKey(a, b) {
@@ -22,6 +39,7 @@ function corridorKey(a, b) {
 }
 
 function findDeal(a, b) {
+  if (!a || !b) return null;
   return FLIGHT_DEALS.find(
     (d) => (d.pair[0] === a && d.pair[1] === b) || (d.pair[0] === b && d.pair[1] === a)
   );
@@ -40,54 +58,53 @@ function initTabs() {
 }
 
 /* ---------- flights ---------- */
-function populateCitySelects() {
-  const make = (select) => {
-    REGIONS.forEach((region) => {
-      const group = document.createElement("optgroup");
-      group.label = region.name;
-      region.cities.forEach((c) => {
-        const opt = document.createElement("option");
-        opt.value = c.code;
-        opt.textContent = `${c.name} (${c.code})`;
-        group.appendChild(opt);
-      });
-      select.appendChild(group);
+function populateCityDatalist() {
+  const dl = $("#city-list");
+  REGIONS.forEach((region) => {
+    region.cities.forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = `${c.name} (${c.code})`;
+      dl.appendChild(opt);
     });
-  };
-  make($("#fly-from"));
-  make($("#fly-to"));
-  $("#fly-from").value = "LAX";
-  $("#fly-to").value = "SYD";
+  });
+  $("#fly-from").value = "Los Angeles (LAX)";
+  $("#fly-to").value = "Sydney (SYD)";
 }
 
 function flightLinks(from, to, depart, ret) {
-  const gq = `Flights from ${from} to ${to}` +
+  const gq = `Flights from ${from.name} to ${to.name}` +
     (depart ? ` on ${depart}` : "") + (ret ? ` returning ${ret}` : "");
-  const sky = (d) => (d ? d.replaceAll("-", "").slice(2) : "");
   const links = [
     { name: "Google Flights", url: `https://www.google.com/travel/flights?q=${encodeURIComponent(gq + (ret ? "" : " one way"))}` },
-    { name: "Skyscanner", url: `https://www.skyscanner.com/transport/flights/${from.toLowerCase()}/${to.toLowerCase()}/${sky(depart)}/${ret ? sky(ret) + "/" : ""}` },
-    { name: "Kiwi.com", url: `https://www.kiwi.com/en/search/results/${from.toLowerCase()}/${to.toLowerCase()}/${depart || "anytime"}/${ret || "no-return"}` },
   ];
+  if (from.code && to.code) {
+    const sky = (d) => (d ? d.replaceAll("-", "").slice(2) : "");
+    links.push(
+      { name: "Skyscanner", url: `https://www.skyscanner.com/transport/flights/${from.code.toLowerCase()}/${to.code.toLowerCase()}/${sky(depart)}/${ret ? sky(ret) + "/" : ""}` },
+      { name: "Kiwi.com", url: `https://www.kiwi.com/en/search/results/${from.code.toLowerCase()}/${to.code.toLowerCase()}/${depart || "anytime"}/${ret || "no-return"}` },
+    );
+  }
   return links;
 }
 
 function renderFlightResult() {
-  const from = $("#fly-from").value;
-  const to = $("#fly-to").value;
+  const from = resolveCity($("#fly-from").value);
+  const to = resolveCity($("#fly-to").value);
   const depart = $("#fly-depart").value;
   const ret = $("#fly-return").value;
   const out = $("#flight-result");
 
-  if (from === to) {
-    out.innerHTML = `<div class="card notice">Pick two different cities and I'll get to work. 😉</div>`;
+  if (!from || !to) {
+    out.innerHTML = `<div class="card notice">Tell me where you're starting and where you're dreaming of — any city works.</div>`;
+    return;
+  }
+  if (from.name === to.name) {
+    out.innerHTML = `<div class="card notice">Pick two different places and I'll get to work. 😉</div>`;
     return;
   }
 
-  const cFrom = cityByCode(from);
-  const cTo = cityByCode(to);
-  const deal = findDeal(from, to);
-  const corridor = CORRIDORS[corridorKey(cFrom.region, cTo.region)];
+  const deal = findDeal(from.code, to.code);
+  const corridor = from.region && to.region ? CORRIDORS[corridorKey(from.region, to.region)] : null;
   const links = flightLinks(from, to, depart, ret);
 
   let intel = "";
@@ -117,13 +134,22 @@ function renderFlightResult() {
         </div>
       </div>
       <p class="agent-tip">💡 ${corridor.advice}</p>`;
+  } else {
+    // World route: share what we know about each end.
+    const tips = [...new Set([from.region, to.region].filter(Boolean))]
+      .map((r) => REGION_TIPS[r]).filter(Boolean);
+    if (!tips.length) tips.push(REGION_TIPS.restofworld);
+    intel = tips.map((t) => `<p class="agent-tip">💡 ${t}</p>`).join("");
+    if (!from.code || !to.code) {
+      intel += `<p class="corridor-note">🧭 I don't recognise ${!from.code ? `“${from.name}”` : `“${to.name}”`} — the Google Flights link below still works with any place name. Pick a city from the suggestions to unlock Skyscanner and Kiwi links too.</p>`;
+    }
   }
 
   const corridorExtra = deal && corridor ? `<p class="corridor-note">🧭 <strong>${corridor.label}:</strong> ${corridor.advice}</p>` : "";
 
   out.innerHTML = `
     <div class="card result-card">
-      <h3>${cFrom.name} → ${cTo.name}</h3>
+      <h3>${from.name} → ${to.name}</h3>
       ${intel}
       ${corridorExtra}
       <div class="link-row">
@@ -134,37 +160,75 @@ function renderFlightResult() {
 }
 
 /* ---------- stays ---------- */
-function populateStayCities() {
-  const sel = $("#stay-city");
+function populateStayDatalist() {
+  const dl = $("#stay-city-list");
   Object.keys(STAYS).forEach((city) => {
     const opt = document.createElement("option");
-    opt.value = city;
-    opt.textContent = `${city}, ${STAYS[city].country}`;
-    sel.appendChild(opt);
+    opt.value = `${city}, ${STAYS[city].country}`;
+    dl.appendChild(opt);
   });
-  sel.value = "Bangkok";
+  $("#stay-city").value = "Bangkok, Thailand";
 }
 
-function stayLinks(city, country, checkin, checkout, maxPrice) {
-  const q = encodeURIComponent(`${city}, ${country}`);
-  const links = [
+/* Match typed text to a STAYS key ("Bangkok, Thailand" or "bangkok"). */
+function resolveStayCity(text) {
+  const raw = (text || "").trim();
+  if (!raw) return null;
+  const lower = raw.toLowerCase();
+  for (const key of Object.keys(STAYS)) {
+    const full = `${key}, ${STAYS[key].country}`.toLowerCase();
+    if (lower === full || lower === key.toLowerCase() || full.startsWith(lower)) {
+      return { key, label: `${key}, ${STAYS[key].country}` };
+    }
+  }
+  return { key: null, label: raw };
+}
+
+function stayLinks(label, checkin, checkout, maxPrice, flexOnly) {
+  const q = encodeURIComponent(label);
+  const bookingFilters = ["review_score=80"];
+  if (flexOnly) bookingFilters.push("fc=2");
+  return [
     { name: "Hostelworld", url: `https://www.hostelworld.com/search?search_keywords=${q}${checkin ? `&date_from=${checkin}&date_to=${checkout || checkin}` : ""}&number_of_guests=1` },
-    { name: "Booking.com", url: `https://www.booking.com/searchresults.html?ss=${q}${checkin ? `&checkin=${checkin}&checkout=${checkout || checkin}` : ""}&group_adults=1&no_rooms=1&nflt=${encodeURIComponent("review_score=80")}` },
+    { name: "Booking.com", url: `https://www.booking.com/searchresults.html?ss=${q}${checkin ? `&checkin=${checkin}&checkout=${checkout || checkin}` : ""}&group_adults=1&no_rooms=1&nflt=${encodeURIComponent(bookingFilters.join(";"))}` },
     { name: "Agoda", url: `https://www.agoda.com/search?textToSearch=${q}${checkin ? `&checkIn=${checkin}` : ""}&adults=1&rooms=1&sort=priceLowToHigh` },
     { name: "Airbnb", url: `https://www.airbnb.com/s/${q}/homes?adults=1${checkin ? `&checkin=${checkin}&checkout=${checkout || checkin}` : ""}${maxPrice ? `&price_max=${maxPrice}` : ""}` },
   ];
-  return links;
 }
 
 function renderStayResult() {
-  const city = $("#stay-city").value;
+  const resolved = resolveStayCity($("#stay-city").value);
   const checkin = $("#stay-in").value;
   const checkout = $("#stay-out").value;
   const budget = parseInt($("#stay-budget").value, 10);
-  const s = STAYS[city];
+  const flexOnly = $("#stay-flex").checked;
   const out = $("#stay-result");
-  const links = stayLinks(city, s.country, checkin, checkout, budget);
 
+  if (!resolved) {
+    out.innerHTML = `<div class="card notice">Type any city in the world and I'll build the searches for you.</div>`;
+    return;
+  }
+
+  const links = stayLinks(resolved.label, checkin, checkout, budget, flexOnly);
+  const flexNote = flexOnly
+    ? `<p class="agent-tip">↩️ <strong>Free cancellation only:</strong> the Booking.com link is filtered to free-cancellation rates. On Hostelworld pick the “Free cancellation” rate at checkout; on Airbnb look for “Flexible” policy listings.</p>`
+    : "";
+
+  if (!resolved.key) {
+    out.innerHTML = `
+      <div class="card result-card">
+        <h3>${resolved.label}</h3>
+        <p>I don't have curated intel for this one (yet!) — but the searches below work for any city on Earth, and the golden rule travels with you:</p>
+        <p class="agent-tip">🧼 <strong>Clean &amp; comfy filter:</strong> rating ≥ 8.3 with 150+ reviews, then skim the recent negative reviews. The Booking link is pre-filtered to 8.0+, Agoda is sorted cheapest-first.</p>
+        ${flexNote}
+        <div class="link-row">
+          ${links.map((l) => `<a class="btn btn-go" href="${l.url}" target="_blank" rel="noopener">Search ${l.name} ↗</a>`).join("")}
+        </div>
+      </div>`;
+    return;
+  }
+
+  const s = STAYS[resolved.key];
   const fits = (range) => budget >= range[0];
   const rows = [
     { label: "🛏️ Hostel dorm bed", range: s.dorm },
@@ -174,7 +238,7 @@ function renderStayResult() {
 
   out.innerHTML = `
     <div class="card result-card">
-      <h3>${city}, ${s.country}</h3>
+      <h3>${resolved.label}</h3>
       <table class="price-table">
         ${rows.map((r) => `
           <tr class="${fits(r.range) ? "" : "over-budget"}">
@@ -186,6 +250,7 @@ function renderStayResult() {
       <p><strong>Where to stay:</strong> ${s.areas}</p>
       <p class="agent-tip">💡 ${s.tip}</p>
       <p class="agent-tip">🧼 <strong>Clean &amp; comfy filter:</strong> rating ≥ 8.3 with 150+ reviews, then skim the recent negative reviews. The Booking link below is pre-filtered to 8.0+, Agoda is sorted cheapest-first.</p>
+      ${flexNote}
       <div class="link-row">
         ${links.map((l) => `<a class="btn btn-go" href="${l.url}" target="_blank" rel="noopener">Search ${l.name} ↗</a>`).join("")}
       </div>
@@ -196,23 +261,43 @@ function renderStayResult() {
 function renderRoutes() {
   const months = parseInt($("#route-months").value, 10);
   const style = $("#route-style").value;
+  const regionFilter = $("#route-region").value;
+  const budget = parseFloat($("#route-budget").value) || 0;
   $("#route-months-label").textContent = months + (months === 1 ? " month" : " months");
-  const daily = DAILY_BUDGET[style];
   const days = months * 30;
   const out = $("#route-results");
 
-  const cards = ROUTE_STRATEGIES.map((r) => {
+  const pool = ROUTE_STRATEGIES.filter((r) => regionFilter === "all" || r.region === regionFilter);
+
+  const cards = pool.map((r) => {
     const flightTotal = r.legs.reduce((sum, l) => sum + l.est, 0);
-    const groundDaily = days * (r.auShare * daily.australia + (1 - r.auShare) * daily.sea);
-    const total = flightTotal + groundDaily;
-    return { r, flightTotal, groundDaily, total };
+    const groundTotal = days * r.daily[style];
+    const total = flightTotal + groundTotal;
+    // How long would the user's budget last on this route?
+    const affordableMonths = budget > flightTotal ? (budget - flightTotal) / (r.daily[style] * 30) : 0;
+    return { r, flightTotal, groundTotal, total, affordableMonths };
   }).sort((a, b) => a.total - b.total);
 
+  if (!cards.length) { out.innerHTML = ""; return; }
   const cheapest = cards[0].total;
 
-  out.innerHTML = cards.map(({ r, flightTotal, groundDaily, total }, i) => `
+  const budgetBadge = ({ total, flightTotal, affordableMonths }) => {
+    if (!budget) return "";
+    if (total <= budget) {
+      return `<div class="fit-badge fit-yes">✅ Fits your ${fmt(budget)} budget — ${fmt(budget - total)} to spare</div>`;
+    }
+    if (affordableMonths >= 0.5) {
+      return `<div class="fit-badge fit-partial">⚠️ ${fmt(total - budget)} over budget at ${months} months — but ${fmt(budget)} funds ~${affordableMonths.toFixed(1)} months on this route</div>`;
+    }
+    return `<div class="fit-badge fit-no">❌ ${fmt(budget)} doesn't cover the transport (${fmt(flightTotal)}) — consider a shorter or closer route</div>`;
+  };
+
+  out.innerHTML = cards.map((c, i) => {
+    const { r, flightTotal, groundTotal, total } = c;
+    return `
     <div class="card route-card ${i === 0 ? "best" : ""}">
       ${i === 0 ? `<div class="best-badge">🏆 Cheapest for your trip</div>` : `<div class="delta-badge">+${fmt(total - cheapest)} vs cheapest</div>`}
+      <span class="region-chip">${r.regionLabel}</span>
       <h3>${r.emoji} ${r.name}</h3>
       <p class="tagline">${r.tagline}</p>
       <ol class="legs">
@@ -224,15 +309,34 @@ function renderRoutes() {
       </ol>
       <div class="route-totals">
         <div><span class="price-label">Transport total</span><span class="price-big">${fmt(flightTotal)}</span></div>
-        <div><span class="price-label">${months} mo on the ground (${style})</span><span class="price-big">${fmt(groundDaily)}</span></div>
+        <div><span class="price-label">${months} mo on the ground (${style})</span><span class="price-big">${fmt(groundTotal)}</span></div>
         <div class="grand"><span class="price-label">Estimated trip total</span><span class="price-big">${fmt(total)}</span></div>
       </div>
+      ${budgetBadge(c)}
       <p class="agent-tip">💰 <strong>Why it saves money:</strong> ${r.why}</p>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 
-/* ---------- deal hacks ---------- */
+/* ---------- deal hacks + flex guide ---------- */
 function renderHacks() {
+  const flex = (section) => `
+    <div class="card flex-card">
+      <h3>${section.title}</h3>
+      <ul class="flex-list">
+        ${section.points.map((p) => `<li>${p}</li>`).join("")}
+      </ul>
+    </div>`;
+  $("#flex-section").innerHTML = `
+    <div class="card flex-intro">
+      <h3>↩️ Stay flexible — book like plans will change</h3>
+      <p>${FLEX_GUIDE.intro}</p>
+    </div>
+    <div class="flex-grid">
+      ${flex(FLEX_GUIDE.flights)}
+      ${flex(FLEX_GUIDE.stays)}
+    </div>`;
+
   $("#hacks-grid").innerHTML = DEAL_HACKS.map((h) => `
     <div class="card hack-card">
       <div class="hack-icon">${h.icon}</div>
@@ -244,8 +348,8 @@ function renderHacks() {
 /* ---------- init ---------- */
 document.addEventListener("DOMContentLoaded", () => {
   initTabs();
-  populateCitySelects();
-  populateStayCities();
+  populateCityDatalist();
+  populateStayDatalist();
   renderHacks();
   renderRoutes();
 
@@ -270,6 +374,8 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   $("#route-months").addEventListener("input", renderRoutes);
   $("#route-style").addEventListener("change", renderRoutes);
+  $("#route-region").addEventListener("change", renderRoutes);
+  $("#route-budget").addEventListener("input", renderRoutes);
 
   renderFlightResult();
   renderStayResult();

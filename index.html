@@ -11,8 +11,8 @@
 
   <header class="hero">
     <h1>🎒 Backpacker Buddy</h1>
-    <p>Your personal budget travel agent for California ↔ Australia ↔ Southeast Asia.
-       Cheap flights, clean beds, and routes that stretch every dollar.</p>
+    <p>Your personal budget travel agent — anywhere your pack takes you.
+       Cheap flights, clean beds, flexible bookings, and routes that stretch every dollar.</p>
   </header>
 
   <nav class="tabs">
@@ -29,14 +29,15 @@
       <div class="card">
         <h3>Find cheap flights</h3>
         <form id="flight-form" class="search-form">
+          <datalist id="city-list"></datalist>
           <div class="field">
             <label for="fly-from">From</label>
-            <select id="fly-from"></select>
+            <input type="text" id="fly-from" list="city-list" placeholder="Any city or airport" autocomplete="off">
           </div>
           <button type="button" id="fly-swap" class="btn btn-swap" title="Swap cities">⇄</button>
           <div class="field">
             <label for="fly-to">To</label>
-            <select id="fly-to"></select>
+            <input type="text" id="fly-to" list="city-list" placeholder="Anywhere on Earth" autocomplete="off">
           </div>
           <div class="field">
             <label for="fly-depart">Depart</label>
@@ -57,9 +58,10 @@
       <div class="card">
         <h3>Find affordable, clean places to sleep</h3>
         <form id="stay-form" class="search-form">
+          <datalist id="stay-city-list"></datalist>
           <div class="field">
             <label for="stay-city">City</label>
-            <select id="stay-city"></select>
+            <input type="text" id="stay-city" list="stay-city-list" placeholder="Any city in the world" autocomplete="off">
           </div>
           <div class="field">
             <label for="stay-in">Check-in</label>
@@ -73,6 +75,10 @@
             <label for="stay-budget">Budget: <span id="stay-budget-label" class="range-value">$25/night</span></label>
             <input type="range" id="stay-budget" min="5" max="150" step="5" value="25">
           </div>
+          <label class="check-field" for="stay-flex">
+            <input type="checkbox" id="stay-flex" checked>
+            <span>↩️ Free cancellation only</span>
+          </label>
           <button type="submit" class="btn btn-primary">Find stays</button>
         </form>
       </div>
@@ -83,8 +89,8 @@
     <section id="panel-routes" class="panel">
       <div class="card">
         <h3>Which way around saves the most?</h3>
-        <p>Three field-tested ways to link California, Australia and Southeast Asia.
-           Set your trip length and style — I'll total each route and crown the cheapest.</p>
+        <p>Field-tested backpacker routes across the world. Set your trip length, style and
+           budget — I'll total each route, crown the cheapest, and tell you what your money buys.</p>
         <div class="controls-row">
           <div class="field">
             <label for="route-months">Trip length: <span id="route-months-label" class="range-value">4 months</span></label>
@@ -97,6 +103,20 @@
               <option value="flashpacker">Flashpacker — privates, some tours</option>
             </select>
           </div>
+          <div class="field">
+            <label for="route-region">Where to?</label>
+            <select id="route-region">
+              <option value="all">Show me everything</option>
+              <option value="apac">Australia + Southeast Asia</option>
+              <option value="latam">Latin America</option>
+              <option value="southasia">South Asia</option>
+              <option value="europe">Europe</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="route-budget">My total budget (USD, optional)</label>
+            <input type="number" id="route-budget" min="0" step="100" placeholder="e.g. 6000">
+          </div>
         </div>
       </div>
       <div id="route-results"></div>
@@ -104,7 +124,8 @@
 
     <!-- HACKS -->
     <section id="panel-hacks" class="panel">
-      <div class="card" style="margin-bottom:1rem">
+      <div id="flex-section"></div>
+      <div class="card" style="margin:1.4rem 0 1rem">
         <h3>The money-saving playbook</h3>
         <p>Evergreen tricks your travel agent would charge for. These are baked into every
            recommendation in the other tabs.</p>
