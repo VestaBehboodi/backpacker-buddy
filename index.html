@@ -88,9 +88,8 @@
     <!-- ROUTES -->
     <section id="panel-routes" class="panel">
       <div class="card">
-        <h3>Which way around saves the most?</h3>
-        <p>Field-tested backpacker routes across the world. Set your trip length, style and
-           budget — I'll total each route, crown the cheapest, and tell you what your money buys.</p>
+        <h3>Your trip</h3>
+        <p>Set the basics once — the custom route builder and the classic routes below both use them.</p>
         <div class="controls-row">
           <div class="field">
             <label for="route-months">Trip length: <span id="route-months-label" class="range-value">4 months</span></label>
@@ -104,19 +103,46 @@
             </select>
           </div>
           <div class="field">
-            <label for="route-region">Where to?</label>
-            <select id="route-region">
-              <option value="all">Show me everything</option>
-              <option value="apac">Australia + Southeast Asia</option>
-              <option value="latam">Latin America</option>
-              <option value="southasia">South Asia</option>
-              <option value="europe">Europe</option>
-            </select>
-          </div>
-          <div class="field">
             <label for="route-budget">My total budget (USD, optional)</label>
             <input type="number" id="route-budget" min="0" step="100" placeholder="e.g. 6000">
           </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>🧭 Build your dream route</h3>
+        <p>List the countries on your wishlist — I'll put them in the smartest order, decide
+           where a bus beats a plane, split your days, and price the whole thing against your budget.</p>
+        <datalist id="country-list"></datalist>
+        <div class="controls-row">
+          <div class="field">
+            <label for="builder-origin">Starting from</label>
+            <select id="builder-origin"></select>
+          </div>
+          <div class="field">
+            <label for="builder-country">Add a country</label>
+            <div class="add-row">
+              <input type="text" id="builder-country" list="country-list" placeholder="e.g. Thailand" autocomplete="off">
+              <button type="button" id="builder-add" class="btn btn-primary">Add</button>
+            </div>
+          </div>
+        </div>
+        <p id="builder-error" class="builder-error" aria-live="polite"></p>
+        <div id="builder-chips" class="chips"></div>
+      </div>
+      <div id="custom-route-result"></div>
+
+      <div class="card classic-header">
+        <h3>Or steal a classic route</h3>
+        <div class="field">
+          <label for="route-region">Where to?</label>
+          <select id="route-region">
+            <option value="all">Show me everything</option>
+            <option value="apac">Australia + Southeast Asia</option>
+            <option value="latam">Latin America</option>
+            <option value="southasia">South Asia</option>
+            <option value="europe">Europe</option>
+          </select>
         </div>
       </div>
       <div id="route-results"></div>

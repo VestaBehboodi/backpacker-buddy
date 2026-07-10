@@ -318,6 +318,204 @@ function renderRoutes() {
   }).join("");
 }
 
+/* ---------- custom route builder ---------- */
+const selectedCountries = [];
+
+function haversineKm(a, b) {
+  const R = 6371, rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad, dLon = (b.lon - a.lon) * rad;
+  const h = Math.sin(dLat / 2) ** 2 +
+    Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/* Fare model: base + per-km, scaled by how cheap the regional market is. */
+function marketFactor(mA, mB, km) {
+  if (km > 7000) return 0.95; // long-haul: competition on trunk routes
+  if (mA === mB) {
+    const same = { sea: 0.75, europe: 0.6, southasia: 0.8, eastasia: 0.85, latam: 1.2, oceania: 1.1, mea: 1.3, na: 1.0 };
+    return same[mA] || 1;
+  }
+  if (mA === "mea" || mB === "mea") return 1.25;
+  if (mA === "latam" || mB === "latam") return 1.2;
+  return 1;
+}
+
+function legBetween(a, b) {
+  const km = haversineKm(a, b);
+  const overland = a.zone && b.zone && a.zone === b.zone && km < 1600;
+  const cost = overland
+    ? Math.max(12, km * 0.028)
+    : (28 + km * 0.034) * marketFactor(a.market, b.market, km);
+  return { from: a, to: b, km: Math.round(km), mode: overland ? "ground" : "flight", est: Math.round(cost / 5) * 5 };
+}
+
+/* Order countries to minimise backtracking: nearest-neighbour from the
+   origin, then a 2-opt pass to untangle any crossings the greedy pass left. */
+function orderCountries(origin, names) {
+  const remaining = names.slice();
+  const ordered = [];
+  let cur = origin;
+  while (remaining.length) {
+    let bestIdx = 0, bestDist = Infinity;
+    remaining.forEach((n, i) => {
+      const d = haversineKm(cur, COUNTRIES[n]);
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    });
+    ordered.push(remaining.splice(bestIdx, 1)[0]);
+    cur = COUNTRIES[ordered[ordered.length - 1]];
+  }
+
+  // 2-opt: origin is pinned at both ends (the trip loops home).
+  const pt = (i) => (i < 0 || i >= ordered.length) ? origin : COUNTRIES[ordered[i]];
+  let improved = true;
+  while (improved) {
+    improved = false;
+    for (let i = 0; i < ordered.length - 1; i++) {
+      for (let j = i + 1; j < ordered.length; j++) {
+        const before = haversineKm(pt(i - 1), pt(i)) + haversineKm(pt(j), pt(j + 1));
+        const after = haversineKm(pt(i - 1), pt(j)) + haversineKm(pt(i), pt(j + 1));
+        if (after + 1 < before) {
+          const seg = ordered.slice(i, j + 1).reverse();
+          ordered.splice(i, seg.length, ...seg);
+          improved = true;
+        }
+      }
+    }
+  }
+  return ordered;
+}
+
+function populateBuilderInputs() {
+  const dl = $("#country-list");
+  Object.keys(COUNTRIES).sort().forEach((name) => {
+    const opt = document.createElement("option");
+    opt.value = name;
+    dl.appendChild(opt);
+  });
+  const sel = $("#builder-origin");
+  ORIGINS.forEach((o, i) => {
+    const opt = document.createElement("option");
+    opt.value = i;
+    opt.textContent = o.name;
+    sel.appendChild(opt);
+  });
+}
+
+function addCountry() {
+  const input = $("#builder-country");
+  const raw = input.value.trim();
+  const err = $("#builder-error");
+  err.textContent = "";
+  if (!raw) return;
+  const match = Object.keys(COUNTRIES).find((n) => n.toLowerCase() === raw.toLowerCase()) ||
+    Object.keys(COUNTRIES).find((n) => n.toLowerCase().startsWith(raw.toLowerCase()));
+  if (!match) {
+    err.textContent = `I don't have "${raw}" in my atlas yet — pick from the suggestions for now.`;
+    return;
+  }
+  if (!selectedCountries.includes(match)) selectedCountries.push(match);
+  input.value = "";
+  renderChips();
+  renderCustomRoute();
+}
+
+function renderChips() {
+  $("#builder-chips").innerHTML = selectedCountries.map((n) =>
+    `<button type="button" class="chip" data-country="${n}" title="Remove ${n}">${n} ✕</button>`
+  ).join("");
+}
+
+function renderCustomRoute() {
+  const out = $("#custom-route-result");
+  if (!selectedCountries.length) { out.innerHTML = ""; return; }
+
+  const months = parseInt($("#route-months").value, 10);
+  const style = $("#route-style").value;
+  const styleIdx = style === "shoestring" ? 0 : 1;
+  const budget = parseFloat($("#route-budget").value) || 0;
+  const origin = ORIGINS[parseInt($("#builder-origin").value, 10)];
+  const totalDays = months * 30;
+
+  const ordered = orderCountries(origin, selectedCountries);
+
+  // Split the days: scale each country's suggested stay, floor of 3 days.
+  const suggestedSum = ordered.reduce((s, n) => s + COUNTRIES[n].days, 0);
+  const alloc = ordered.map((n) => Math.max(3, Math.round(COUNTRIES[n].days / suggestedSum * totalDays)));
+  let drift = totalDays - alloc.reduce((s, d) => s + d, 0);
+  while (drift !== 0) {
+    const i = alloc.indexOf(Math.max(...alloc));
+    const step = drift > 0 ? 1 : (alloc[i] > 3 ? -1 : 0);
+    if (step === 0) break;
+    alloc[i] += step;
+    drift -= step;
+  }
+
+  // Legs: origin -> each country -> origin.
+  const stops = ordered.map((n) => ({ name: n, ...COUNTRIES[n] }));
+  const points = [{ name: origin.name, ...origin }, ...stops, { name: origin.name, ...origin }];
+  const legs = [];
+  for (let i = 0; i < points.length - 1; i++) legs.push(legBetween(points[i], points[i + 1]));
+
+  const transport = legs.reduce((s, l) => s + l.est, 0);
+  const ground = ordered.reduce((s, n, i) => s + alloc[i] * COUNTRIES[n].daily[styleIdx], 0);
+  const total = transport + ground;
+  const avgDaily = ground / totalDays;
+
+  let fitBadge = "";
+  if (budget) {
+    if (total <= budget) {
+      fitBadge = `<div class="fit-badge fit-yes">✅ Fits your ${fmt(budget)} budget — ${fmt(budget - total)} to spare</div>`;
+    } else {
+      const affordableMonths = budget > transport ? (budget - transport) / (avgDaily * 30) : 0;
+      const priciest = ordered.reduce((best, n, i) => {
+        const cost = alloc[i] * COUNTRIES[n].daily[styleIdx];
+        return cost > best.cost ? { name: n, cost } : best;
+      }, { name: "", cost: 0 });
+      fitBadge = affordableMonths >= 0.5
+        ? `<div class="fit-badge fit-partial">⚠️ ${fmt(total - budget)} over budget at ${months} months — ${fmt(budget)} funds ~${affordableMonths.toFixed(1)} months of this route. Biggest lever: ${priciest.name} is your priciest stop (~${fmt(priciest.cost)} on the ground).</div>`
+        : `<div class="fit-badge fit-no">❌ ${fmt(budget)} doesn't cover the transport alone (${fmt(transport)}) — trim the country list or start closer to home.</div>`;
+    }
+  }
+
+  const avgStay = totalDays / ordered.length;
+  const paceWarning = avgStay < 5
+    ? `<p class="agent-tip">🏃 That's ${ordered.length} countries in ${months} month${months === 1 ? "" : "s"} — under ${Math.floor(avgStay)} days each once transit eats its share. Consider fewer countries or more time; slower is cheaper <em>and</em> better.</p>`
+    : "";
+
+  const itinerary = legs.map((l, i) => {
+    const legLine = `
+      <li>
+        <span class="leg-mode">${l.mode === "flight" ? "✈️" : "🚌"}</span>
+        <span class="leg-desc"><strong>${l.from.name.split(" (")[0].split(",")[0]} → ${l.to.name.split(",")[0]}</strong>${l.to.gateway ? ` <span class="leg-note">(land in ${l.to.gateway})</span>` : ""} · ~${fmt(l.est)}<br>
+        <span class="leg-note">${l.mode === "flight" ? `≈${l.km.toLocaleString("en-US")} km flight — track fares on the Flights tab` : `≈${l.km.toLocaleString("en-US")} km overland — bus or train, book on 12Go`}</span></span>
+      </li>`;
+    const stopIdx = i; // leg i arrives at stop i (last leg arrives home)
+    const stayLine = stopIdx < ordered.length ? `
+      <li class="stay-line">
+        <span class="leg-mode">📍</span>
+        <span class="leg-desc"><strong>${ordered[stopIdx]}</strong> — ${alloc[stopIdx]} days · ~${fmt(alloc[stopIdx] * COUNTRIES[ordered[stopIdx]].daily[styleIdx])} on the ground (${fmt(COUNTRIES[ordered[stopIdx]].daily[styleIdx])}/day ${style})</span>
+      </li>` : "";
+    return legLine + stayLine;
+  }).join("");
+
+  out.innerHTML = `
+    <div class="card route-card best">
+      <div class="best-badge">🧭 Your custom route — ${ordered.length} countr${ordered.length === 1 ? "y" : "ies"}, ${months} month${months === 1 ? "" : "s"}</div>
+      <h3>${origin.name.split(",")[0]} → ${ordered.map((n) => n).join(" → ")} → home</h3>
+      <p class="tagline">Ordered to minimise backtracking from ${origin.name.split(",")[0]}. Same-region neighbours go overland; everything else flies.</p>
+      <ol class="legs">${itinerary}</ol>
+      <div class="route-totals">
+        <div><span class="price-label">Transport total (${legs.length} legs)</span><span class="price-big">${fmt(transport)}</span></div>
+        <div><span class="price-label">${months} mo on the ground (${style})</span><span class="price-big">${fmt(ground)}</span></div>
+        <div class="grand"><span class="price-label">Estimated trip total</span><span class="price-big">${fmt(total)}</span></div>
+      </div>
+      ${fitBadge}
+      ${paceWarning}
+      <p class="fine-print">Fare estimates come from a distance + regional-budget-carrier model — treat them as planning numbers and check real fares (Flights tab) before locking anything in. Daily costs cover a ${style} bed, food, local transport and fun.</p>
+    </div>`;
+}
+
 /* ---------- deal hacks + flex guide ---------- */
 function renderHacks() {
   const flex = (section) => `
@@ -350,6 +548,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initTabs();
   populateCityDatalist();
   populateStayDatalist();
+  populateBuilderInputs();
   renderHacks();
   renderRoutes();
 
@@ -372,10 +571,30 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#stay-budget").addEventListener("input", () => {
     $("#stay-budget-label").textContent = fmt($("#stay-budget").value) + "/night";
   });
-  $("#route-months").addEventListener("input", renderRoutes);
-  $("#route-style").addEventListener("change", renderRoutes);
+  const rerenderAllRoutes = () => { renderRoutes(); renderCustomRoute(); };
+  $("#route-months").addEventListener("input", rerenderAllRoutes);
+  $("#route-style").addEventListener("change", rerenderAllRoutes);
   $("#route-region").addEventListener("change", renderRoutes);
-  $("#route-budget").addEventListener("input", renderRoutes);
+  $("#route-budget").addEventListener("input", rerenderAllRoutes);
+
+  $("#builder-add").addEventListener("click", addCountry);
+  $("#builder-country").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); addCountry(); }
+  });
+  // Datalist picks fire 'change' — add immediately so it feels instant.
+  $("#builder-country").addEventListener("change", () => {
+    const v = $("#builder-country").value.trim().toLowerCase();
+    if (Object.keys(COUNTRIES).some((n) => n.toLowerCase() === v)) addCountry();
+  });
+  $("#builder-origin").addEventListener("change", renderCustomRoute);
+  $("#builder-chips").addEventListener("click", (e) => {
+    const chip = e.target.closest(".chip");
+    if (!chip) return;
+    const i = selectedCountries.indexOf(chip.dataset.country);
+    if (i >= 0) selectedCountries.splice(i, 1);
+    renderChips();
+    renderCustomRoute();
+  });
 
   renderFlightResult();
   renderStayResult();

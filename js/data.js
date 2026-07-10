@@ -612,3 +612,83 @@ const DEAL_HACKS = [
   { icon: "🧭", title: "Season your route",
     body: "SEA mainland is driest Nov–Apr; Bali is best Apr–Oct; Australia's east coast shines Sep–Nov and Mar–May. The Reverse Loop timed to leave California in October threads all three." },
 ];
+
+/* =========================================================================
+   Custom route builder — country knowledge base.
+   gateway: main budget-flight entry airport. lat/lon: that airport.
+   zone: overland-connected cluster (same zone + <1,600 km ⇒ bus/train leg).
+   market: regional airfare market, used to scale flight estimates.
+   daily: on-the-ground USD/day [shoestring, flashpacker].
+   days: suggested days for a satisfying visit (scaled to fit the trip).
+   ========================================================================= */
+
+const COUNTRIES = {
+  // Southeast Asia
+  "Thailand":     { gateway: "Bangkok (BKK)",        lat: 13.69,  lon: 100.75,  zone: "seaMain",  market: "sea",       daily: [35, 55],  days: 18 },
+  "Vietnam":      { gateway: "Ho Chi Minh City (SGN)", lat: 10.82, lon: 106.65, zone: "seaMain",  market: "sea",       daily: [30, 50],  days: 16 },
+  "Cambodia":     { gateway: "Phnom Penh (PNH)",     lat: 11.55,  lon: 104.84,  zone: "seaMain",  market: "sea",       daily: [30, 50],  days: 8 },
+  "Laos":         { gateway: "Vientiane (VTE)",      lat: 17.99,  lon: 102.56,  zone: "seaMain",  market: "sea",       daily: [28, 48],  days: 8 },
+  "Malaysia":     { gateway: "Kuala Lumpur (KUL)",   lat: 2.75,   lon: 101.71,  zone: "seaMain",  market: "sea",       daily: [35, 55],  days: 8 },
+  "Singapore":    { gateway: "Singapore (SIN)",      lat: 1.36,   lon: 103.99,  zone: "seaMain",  market: "sea",       daily: [65, 95],  days: 3 },
+  "Indonesia":    { gateway: "Bali (DPS)",           lat: -8.75,  lon: 115.17,  zone: "indonesia", market: "sea",      daily: [32, 55],  days: 14 },
+  "Philippines":  { gateway: "Manila (MNL)",         lat: 14.51,  lon: 121.02,  zone: "philippines", market: "sea",    daily: [35, 55],  days: 12 },
+  // East Asia
+  "Japan":        { gateway: "Tokyo (HND)",          lat: 35.55,  lon: 139.78,  zone: "japan",    market: "eastasia",  daily: [70, 110], days: 12 },
+  "South Korea":  { gateway: "Seoul (ICN)",          lat: 37.46,  lon: 126.44,  zone: "korea",    market: "eastasia",  daily: [55, 90],  days: 7 },
+  "Taiwan":       { gateway: "Taipei (TPE)",         lat: 25.08,  lon: 121.23,  zone: "taiwan",   market: "eastasia",  daily: [50, 80],  days: 7 },
+  "Hong Kong":    { gateway: "Hong Kong (HKG)",      lat: 22.31,  lon: 113.91,  zone: "eastasiaMain", market: "eastasia", daily: [60, 100], days: 3 },
+  "China":        { gateway: "Shanghai (PVG)",       lat: 31.14,  lon: 121.81,  zone: "eastasiaMain", market: "eastasia", daily: [45, 75], days: 12 },
+  // South Asia
+  "India":        { gateway: "Delhi (DEL)",          lat: 28.57,  lon: 77.10,   zone: "southasia", market: "southasia", daily: [25, 45], days: 21 },
+  "Nepal":        { gateway: "Kathmandu (KTM)",      lat: 27.70,  lon: 85.36,   zone: "southasia", market: "southasia", daily: [25, 45], days: 12 },
+  "Sri Lanka":    { gateway: "Colombo (CMB)",        lat: 7.18,   lon: 79.88,   zone: "srilanka", market: "southasia", daily: [30, 50],  days: 10 },
+  // Oceania
+  "Australia":    { gateway: "Sydney (SYD)",         lat: -33.95, lon: 151.18,  zone: "australia", market: "oceania",  daily: [75, 110], days: 21 },
+  "New Zealand":  { gateway: "Auckland (AKL)",       lat: -37.01, lon: 174.79,  zone: "nz",       market: "oceania",   daily: [70, 105], days: 14 },
+  "Fiji":         { gateway: "Nadi (NAN)",           lat: -17.76, lon: 177.44,  zone: "fiji",     market: "oceania",   daily: [55, 90],  days: 5 },
+  // Latin America
+  "Mexico":       { gateway: "Mexico City (MEX)",    lat: 19.44,  lon: -99.07,  zone: "latamN",   market: "latam",     daily: [40, 65],  days: 14 },
+  "Guatemala":    { gateway: "Guatemala City (GUA)", lat: 14.58,  lon: -90.53,  zone: "latamN",   market: "latam",     daily: [30, 50],  days: 8 },
+  "Nicaragua":    { gateway: "Managua (MGA)",        lat: 12.14,  lon: -86.17,  zone: "latamN",   market: "latam",     daily: [30, 50],  days: 6 },
+  "Costa Rica":   { gateway: "San José (SJO)",       lat: 9.99,   lon: -84.20,  zone: "latamN",   market: "latam",     daily: [50, 80],  days: 8 },
+  "Panama":       { gateway: "Panama City (PTY)",    lat: 9.07,   lon: -79.38,  zone: "latamN",   market: "latam",     daily: [45, 70],  days: 5 },
+  "Colombia":     { gateway: "Medellín (MDE)",       lat: 6.16,   lon: -75.42,  zone: "latamS",   market: "latam",     daily: [35, 55],  days: 12 },
+  "Ecuador":      { gateway: "Quito (UIO)",          lat: -0.13,  lon: -78.36,  zone: "latamS",   market: "latam",     daily: [30, 50],  days: 8 },
+  "Peru":         { gateway: "Lima (LIM)",           lat: -12.02, lon: -77.11,  zone: "latamS",   market: "latam",     daily: [32, 52],  days: 12 },
+  "Bolivia":      { gateway: "La Paz (LPB)",         lat: -16.51, lon: -68.19,  zone: "latamS",   market: "latam",     daily: [25, 45],  days: 8 },
+  "Chile":        { gateway: "Santiago (SCL)",       lat: -33.39, lon: -70.79,  zone: "latamS",   market: "latam",     daily: [50, 80],  days: 10 },
+  "Argentina":    { gateway: "Buenos Aires (EZE)",   lat: -34.82, lon: -58.54,  zone: "latamS",   market: "latam",     daily: [40, 65],  days: 12 },
+  "Brazil":       { gateway: "Rio de Janeiro (GIG)", lat: -22.81, lon: -43.25,  zone: "latamS",   market: "latam",     daily: [40, 65],  days: 14 },
+  // Europe
+  "Portugal":     { gateway: "Lisbon (LIS)",         lat: 38.77,  lon: -9.13,   zone: "europe",   market: "europe",    daily: [55, 85],  days: 8 },
+  "Spain":        { gateway: "Madrid (MAD)",         lat: 40.47,  lon: -3.56,   zone: "europe",   market: "europe",    daily: [60, 95],  days: 10 },
+  "France":       { gateway: "Paris (CDG)",          lat: 49.01,  lon: 2.55,    zone: "europe",   market: "europe",    daily: [75, 115], days: 7 },
+  "United Kingdom": { gateway: "London (LHR)",       lat: 51.47,  lon: -0.45,   zone: "europe",   market: "europe",    daily: [75, 115], days: 6 },
+  "Netherlands":  { gateway: "Amsterdam (AMS)",      lat: 52.31,  lon: 4.76,    zone: "europe",   market: "europe",    daily: [75, 120], days: 4 },
+  "Germany":      { gateway: "Berlin (BER)",         lat: 52.36,  lon: 13.50,   zone: "europe",   market: "europe",    daily: [65, 100], days: 7 },
+  "Czechia":      { gateway: "Prague (PRG)",         lat: 50.10,  lon: 14.26,   zone: "europe",   market: "europe",    daily: [50, 80],  days: 5 },
+  "Poland":       { gateway: "Kraków (KRK)",         lat: 50.08,  lon: 19.78,   zone: "europe",   market: "europe",    daily: [45, 70],  days: 6 },
+  "Hungary":      { gateway: "Budapest (BUD)",       lat: 47.44,  lon: 19.26,   zone: "europe",   market: "europe",    daily: [45, 75],  days: 5 },
+  "Croatia":      { gateway: "Split (SPU)",          lat: 43.54,  lon: 16.30,   zone: "europe",   market: "europe",    daily: [50, 85],  days: 7 },
+  "Albania":      { gateway: "Tirana (TIA)",         lat: 41.41,  lon: 19.72,   zone: "europe",   market: "europe",    daily: [40, 65],  days: 6 },
+  "Greece":       { gateway: "Athens (ATH)",         lat: 37.94,  lon: 23.94,   zone: "europe",   market: "europe",    daily: [50, 85],  days: 8 },
+  "Italy":        { gateway: "Rome (FCO)",           lat: 41.80,  lon: 12.24,   zone: "europe",   market: "europe",    daily: [65, 100], days: 9 },
+  "Türkiye":      { gateway: "Istanbul (IST)",       lat: 41.26,  lon: 28.74,   zone: "europe",   market: "europe",    daily: [40, 65],  days: 8 },
+  // Middle East & Africa
+  "Morocco":      { gateway: "Marrakech (RAK)",      lat: 31.61,  lon: -8.03,   zone: "morocco",  market: "mea",       daily: [35, 60],  days: 8 },
+  "Egypt":        { gateway: "Cairo (CAI)",          lat: 30.12,  lon: 31.41,   zone: "mideast",  market: "mea",       daily: [30, 55],  days: 8 },
+  "Jordan":       { gateway: "Amman (AMM)",          lat: 31.72,  lon: 35.99,   zone: "mideast",  market: "mea",       daily: [45, 75],  days: 5 },
+  "UAE":          { gateway: "Dubai (DXB)",          lat: 25.25,  lon: 55.36,   zone: "mideast",  market: "mea",       daily: [65, 105], days: 3 },
+  "Kenya":        { gateway: "Nairobi (NBO)",        lat: -1.32,  lon: 36.93,   zone: "kenya",    market: "mea",       daily: [40, 70],  days: 8 },
+  "South Africa": { gateway: "Cape Town (CPT)",      lat: -33.97, lon: 18.60,   zone: "southafrica", market: "mea",    daily: [40, 70],  days: 12 },
+};
+
+/* Home bases the trip starts and ends at. */
+const ORIGINS = [
+  { name: "Los Angeles, California", lat: 33.94, lon: -118.41, market: "na" },
+  { name: "San Francisco, California", lat: 37.62, lon: -122.38, market: "na" },
+  { name: "New York, USA", lat: 40.64, lon: -73.78, market: "na" },
+  { name: "Vancouver, Canada", lat: 49.19, lon: -123.18, market: "na" },
+  { name: "London, UK", lat: 51.47, lon: -0.45, market: "europe" },
+  { name: "Sydney, Australia", lat: -33.95, lon: 151.18, market: "oceania" },
+];
