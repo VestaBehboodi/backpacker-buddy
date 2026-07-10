@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backpacker Buddy — your personal budget travel agent</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎒</text></svg>">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <header class="hero">
+    <h1>🎒 Backpacker Buddy</h1>
+    <p>Your personal budget travel agent for California ↔ Australia ↔ Southeast Asia.
+       Cheap flights, clean beds, and routes that stretch every dollar.</p>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-panel="panel-flights">✈️ Flights</button>
+    <button class="tab" data-panel="panel-stays">🛏️ Stays</button>
+    <button class="tab" data-panel="panel-routes">🗺️ Route Planner</button>
+    <button class="tab" data-panel="panel-hacks">💡 Deal Hacks</button>
+  </nav>
+
+  <main>
+
+    <!-- FLIGHTS -->
+    <section id="panel-flights" class="panel active">
+      <div class="card">
+        <h3>Find cheap flights</h3>
+        <form id="flight-form" class="search-form">
+          <div class="field">
+            <label for="fly-from">From</label>
+            <select id="fly-from"></select>
+          </div>
+          <button type="button" id="fly-swap" class="btn btn-swap" title="Swap cities">⇄</button>
+          <div class="field">
+            <label for="fly-to">To</label>
+            <select id="fly-to"></select>
+          </div>
+          <div class="field">
+            <label for="fly-depart">Depart</label>
+            <input type="date" id="fly-depart">
+          </div>
+          <div class="field">
+            <label for="fly-return">Return <span style="text-transform:none;font-weight:400">(optional — one-way is the backpacker way)</span></label>
+            <input type="date" id="fly-return">
+          </div>
+          <button type="submit" class="btn btn-primary">Find deals</button>
+        </form>
+      </div>
+      <div id="flight-result"></div>
+    </section>
+
+    <!-- STAYS -->
+    <section id="panel-stays" class="panel">
+      <div class="card">
+        <h3>Find affordable, clean places to sleep</h3>
+        <form id="stay-form" class="search-form">
+          <div class="field">
+            <label for="stay-city">City</label>
+            <select id="stay-city"></select>
+          </div>
+          <div class="field">
+            <label for="stay-in">Check-in</label>
+            <input type="date" id="stay-in">
+          </div>
+          <div class="field">
+            <label for="stay-out">Check-out</label>
+            <input type="date" id="stay-out">
+          </div>
+          <div class="field">
+            <label for="stay-budget">Budget: <span id="stay-budget-label" class="range-value">$25/night</span></label>
+            <input type="range" id="stay-budget" min="5" max="150" step="5" value="25">
+          </div>
+          <button type="submit" class="btn btn-primary">Find stays</button>
+        </form>
+      </div>
+      <div id="stay-result"></div>
+    </section>
+
+    <!-- ROUTES -->
+    <section id="panel-routes" class="panel">
+      <div class="card">
+        <h3>Which way around saves the most?</h3>
+        <p>Three field-tested ways to link California, Australia and Southeast Asia.
+           Set your trip length and style — I'll total each route and crown the cheapest.</p>
+        <div class="controls-row">
+          <div class="field">
+            <label for="route-months">Trip length: <span id="route-months-label" class="range-value">4 months</span></label>
+            <input type="range" id="route-months" min="1" max="12" step="1" value="4">
+          </div>
+          <div class="field">
+            <label for="route-style">Travel style</label>
+            <select id="route-style">
+              <option value="shoestring">Shoestring — dorms, street food, buses</option>
+              <option value="flashpacker">Flashpacker — privates, some tours</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div id="route-results"></div>
+    </section>
+
+    <!-- HACKS -->
+    <section id="panel-hacks" class="panel">
+      <div class="card" style="margin-bottom:1rem">
+        <h3>The money-saving playbook</h3>
+        <p>Evergreen tricks your travel agent would charge for. These are baked into every
+           recommendation in the other tabs.</p>
+      </div>
+      <div id="hacks-grid"></div>
+    </section>
+
+  </main>
+
+  <footer>
+    Backpacker Buddy gives planning estimates from budget-carrier sale history — always confirm
+    live prices via the search links. Safe travels! 🌏
+  </footer>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
