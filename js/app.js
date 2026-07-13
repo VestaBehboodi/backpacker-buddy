@@ -173,16 +173,6 @@ function populateStayDatalist() {
   $("#stay-city").value = "Bangkok, Thailand";
 }
 
-/* Find the IATA city code for a stay label so live hotel rates can load. */
-function stayCityCode(label) {
-  const attempts = [label, label.split(",")[0].split("(")[0].trim()];
-  for (const text of attempts) {
-    const hit = resolveCity(text);
-    if (hit && hit.code) return hit.code;
-  }
-  return null;
-}
-
 /* Match typed text to a STAYS key ("Bangkok, Thailand" or "bangkok"). */
 function resolveStayCity(text) {
   const raw = (text || "").trim();
@@ -223,8 +213,8 @@ function renderStayResult() {
   }
 
   const links = stayLinks(resolved.label, checkin, checkout, budget, flexOnly);
-  const liveCity = stayCityCode(resolved.label);
-  const liveReady = LIVE.enabled() && liveCity && checkin && checkout;
+  const liveName = resolved.label.split(" (")[0].split(",")[0].trim();
+  const liveReady = LIVE.enabled() && liveName && checkin && checkout;
   const liveBlock = liveReady ? `<div id="live-hotels" class="live-block"></div>` : "";
   const flexNote = flexOnly
     ? `<p class="agent-tip">↩️ <strong>Free cancellation only:</strong> the Booking.com link is filtered to free-cancellation rates. On Hostelworld pick the “Free cancellation” rate at checkout; on Airbnb look for “Flexible” policy listings.</p>`
@@ -242,7 +232,7 @@ function renderStayResult() {
           ${links.map((l) => `<a class="btn btn-go" href="${l.url}" target="_blank" rel="noopener">Search ${l.name} ↗</a>`).join("")}
         </div>
       </div>`;
-    if (liveReady) renderLiveHotels($("#live-hotels"), { city: liveCity, checkin, checkout });
+    if (liveReady) renderLiveHotels($("#live-hotels"), { name: liveName, checkin, checkout });
     return;
   }
 
@@ -274,7 +264,7 @@ function renderStayResult() {
         ${links.map((l) => `<a class="btn btn-go" href="${l.url}" target="_blank" rel="noopener">Search ${l.name} ↗</a>`).join("")}
       </div>
     </div>`;
-  if (liveReady) renderLiveHotels($("#live-hotels"), { city: liveCity, checkin, checkout });
+  if (liveReady) renderLiveHotels($("#live-hotels"), { name: liveName, checkin, checkout });
 }
 
 /* ---------- routes ---------- */

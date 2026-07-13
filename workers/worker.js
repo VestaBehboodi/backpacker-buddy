@@ -1,15 +1,21 @@
 /* =========================================================================
    Backpacker Buddy — live prices proxy (Cloudflare Worker)
 
-   Proxies the Amadeus Self-Service API so the API key never reaches the
-   browser, and caches responses so a free-tier quota goes a long way.
+   Proxies travel-data APIs so tokens never reach the browser, and caches
+   responses so free quotas go a long way. Supports two providers and
+   auto-detects which one is configured:
+
+   • Travelpayouts (recommended — free for individuals)
+       flights: Aviasales "prices for dates" (real cached fares + book links)
+       hotels:  Hotellook cache API
+       secret:  TRAVELPAYOUTS_TOKEN
+   • Duffel (optional — true real-time bookable offers)
+       flights only. secret: DUFFEL_API_KEY
 
    Deploy:
      cd workers
      npx wrangler deploy
-     npx wrangler secret put AMADEUS_API_KEY      # paste when prompted
-     npx wrangler secret put AMADEUS_API_SECRET   # paste when prompted
-     # optional: npx wrangler secret put AMADEUS_ENV   ("production"; default "test")
+     npx wrangler secret put TRAVELPAYOUTS_TOKEN   # and/or DUFFEL_API_KEY
 
    Then paste the worker URL into the "Live prices" panel in the site footer.
    ========================================================================= */
@@ -26,44 +32,6 @@ const json = (body, status = 200, extra = {}) =>
     headers: { "Content-Type": "application/json", ...CORS, ...extra },
   });
 
-const apiBase = (env) =>
-  (env.AMADEUS_ENV || "test") === "production"
-    ? "https://api.amadeus.com"
-    : "https://test.api.amadeus.com";
-
-/* OAuth token, cached in the worker instance between requests. */
-let tokenCache = { token: null, exp: 0 };
-async function getToken(env) {
-  if (!env.AMADEUS_API_KEY || !env.AMADEUS_API_SECRET) {
-    throw new Error("not_configured");
-  }
-  if (tokenCache.token && Date.now() < tokenCache.exp - 60_000) return tokenCache.token;
-  const res = await fetch(apiBase(env) + "/v1/security/oauth2/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: env.AMADEUS_API_KEY,
-      client_secret: env.AMADEUS_API_SECRET,
-    }),
-  });
-  if (!res.ok) throw new Error("auth_failed");
-  const d = await res.json();
-  tokenCache = { token: d.access_token, exp: Date.now() + d.expires_in * 1000 };
-  return d.access_token;
-}
-
-async function amadeus(env, path, params) {
-  const token = await getToken(env);
-  const url = apiBase(env) + path + "?" + new URLSearchParams(params);
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`upstream_${res.status}:${detail.slice(0, 300)}`);
-  }
-  return res.json();
-}
-
 /* Edge-cache wrapper: identical queries within `seconds` are free. */
 async function cached(request, ctx, seconds, produce) {
   const cacheKey = new Request(new URL(request.url).toString());
@@ -78,6 +46,104 @@ async function cached(request, ctx, seconds, produce) {
 const IATA = /^[A-Za-z]{3}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/* IATA carrier code → name, for providers that only return codes. */
+const AIRLINES = {
+  AA: "American", DL: "Delta", UA: "United", AS: "Alaska", WN: "Southwest", B6: "JetBlue",
+  QF: "Qantas", JQ: "Jetstar", VA: "Virgin Australia", NZ: "Air New Zealand", FJ: "Fiji Airways",
+  TG: "Thai Airways", VJ: "VietJet", VN: "Vietnam Airlines", QH: "Bamboo Airways",
+  AK: "AirAsia", D7: "AirAsia X", FD: "Thai AirAsia", QZ: "Indonesia AirAsia", Z2: "Philippines AirAsia",
+  TR: "Scoot", SQ: "Singapore Airlines", MH: "Malaysia Airlines", OD: "Batik Air", ID: "Batik Air",
+  "5J": "Cebu Pacific", PR: "Philippine Airlines", JT: "Lion Air", GA: "Garuda Indonesia",
+  CX: "Cathay Pacific", KE: "Korean Air", OZ: "Asiana", NH: "ANA", JL: "JAL", MM: "Peach",
+  ZG: "ZipAir", TW: "T'way", "7C": "Jeju Air", CI: "China Airlines", BR: "EVA Air",
+  CA: "Air China", MU: "China Eastern", CZ: "China Southern",
+  EK: "Emirates", QR: "Qatar Airways", EY: "Etihad", TK: "Turkish Airlines",
+  LH: "Lufthansa", BA: "British Airways", AF: "Air France", KL: "KLM", IB: "Iberia",
+  VY: "Vueling", FR: "Ryanair", W6: "Wizz Air", U2: "easyJet", TP: "TAP Portugal",
+  N0: "Norse Atlantic", BF: "French Bee", AY: "Finnair", SK: "SAS", LO: "LOT",
+  Y4: "Volaris", VB: "VivaAerobus", AM: "Aeroméxico", CM: "Copa", AV: "Avianca",
+  P5: "Wingo", JA: "JetSmart", LA: "LATAM", G3: "GOL", AD: "Azul", AR: "Aerolíneas Argentinas",
+  H2: "Sky Airline", "6E": "IndiGo", IX: "Air India Express", AI: "Air India",
+  SG: "SpiceJet", UL: "SriLankan", U4: "Buddha Air",
+};
+const carrierName = (code) => AIRLINES[code] || code;
+
+const minsToDuration = (mins) => {
+  if (!mins && mins !== 0) return "";
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return `${h}h${String(m).padStart(2, "0")}m`;
+};
+
+/* ---------- flights: Duffel (real-time offers) ---------- */
+async function duffelFlights(env, { from, to, depart, ret }) {
+  const slices = [{ origin: from, destination: to, departure_date: depart }];
+  if (ret) slices.push({ origin: to, destination: from, departure_date: ret });
+  const res = await fetch("https://api.duffel.com/air/offer_requests?return_offers=true", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.DUFFEL_API_KEY}`,
+      "Duffel-Version": "v2",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      data: { slices, passengers: [{ type: "adult" }], cabin_class: "economy" },
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`upstream_${res.status}:${detail.slice(0, 300)}`);
+  }
+  const { data } = await res.json();
+  return (data.offers || []).map((o) => {
+    const segs = o.slices[0].segments;
+    const names = [...new Set(segs.map((s) =>
+      (s.marketing_carrier && s.marketing_carrier.name) || o.owner.name))];
+    return {
+      price: Number(o.total_amount),
+      currency: o.total_currency,
+      carriers: names,
+      stops: segs.length - 1,
+      duration: (o.slices[0].duration || "").replace("PT", "").toLowerCase(),
+      departAt: segs[0].departing_at,
+      arriveAt: segs[segs.length - 1].arriving_at,
+      roundTrip: o.slices.length > 1,
+    };
+  }).sort((a, b) => a.price - b.price).slice(0, 10);
+}
+
+/* ---------- flights: Travelpayouts / Aviasales (cached real fares) ---------- */
+async function tpFlights(env, { from, to, depart, ret }) {
+  const params = new URLSearchParams({
+    origin: from,
+    destination: to,
+    departure_at: depart,
+    one_way: ret ? "false" : "true",
+    direct: "false",
+    sorting: "price",
+    currency: "usd",
+    limit: "15",
+    token: env.TRAVELPAYOUTS_TOKEN,
+  });
+  if (ret) params.set("return_at", ret);
+  const res = await fetch(`https://api.travelpayouts.com/aviasales/v3/prices_for_dates?${params}`);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`upstream_${res.status}:${detail.slice(0, 300)}`);
+  }
+  const body = await res.json();
+  return (body.data || []).map((f) => ({
+    price: Number(f.price),
+    currency: "USD",
+    carriers: [carrierName(f.airline)],
+    stops: f.transfers ?? 0,
+    duration: minsToDuration(f.duration),
+    departAt: f.departure_at,
+    arriveAt: null,
+    roundTrip: Boolean(ret),
+    link: f.link ? `https://www.aviasales.com${f.link}` : null,
+  })).sort((a, b) => a.price - b.price).slice(0, 10);
+}
+
 async function flights(request, url, env, ctx) {
   const from = (url.searchParams.get("from") || "").toUpperCase();
   const to = (url.searchParams.get("to") || "").toUpperCase();
@@ -87,68 +153,48 @@ async function flights(request, url, env, ctx) {
     return json({ error: "bad_request" }, 400);
   }
   return cached(request, ctx, 2 * 3600, async () => {
-    const params = {
-      originLocationCode: from,
-      destinationLocationCode: to,
-      departureDate: depart,
-      adults: "1",
-      currencyCode: "USD",
-      max: "20",
-    };
-    if (ret) params.returnDate = ret;
-    const data = await amadeus(env, "/v2/shopping/flight-offers", params);
-    const carriers = (data.dictionaries && data.dictionaries.carriers) || {};
-    const offers = (data.data || []).map((o) => {
-      const firstItin = o.itineraries[0];
-      const segs = firstItin.segments;
-      const names = [...new Set(segs.map((s) => carriers[s.carrierCode] || s.carrierCode))];
-      return {
-        price: Number(o.price.grandTotal),
-        currency: o.price.currency,
-        carriers: names,
-        stops: segs.length - 1,
-        duration: firstItin.duration.replace("PT", "").toLowerCase(),
-        departAt: segs[0].departure.at,
-        arriveAt: segs[segs.length - 1].arrival.at,
-        roundTrip: o.itineraries.length > 1,
-      };
-    }).sort((a, b) => a.price - b.price).slice(0, 10);
+    const q = { from, to, depart, ret };
+    let offers;
+    if (env.DUFFEL_API_KEY) offers = await duffelFlights(env, q);
+    else if (env.TRAVELPAYOUTS_TOKEN) offers = await tpFlights(env, q);
+    else throw new Error("not_configured");
     return { offers, fetchedAt: new Date().toISOString() };
   });
 }
 
+/* ---------- hotels: Travelpayouts / Hotellook ---------- */
 async function hotels(request, url, env, ctx) {
-  const city = (url.searchParams.get("city") || "").toUpperCase();
+  const name = url.searchParams.get("name") || "";
   const checkin = url.searchParams.get("checkin") || "";
   const checkout = url.searchParams.get("checkout") || "";
-  if (!IATA.test(city) || !DATE.test(checkin) || !DATE.test(checkout)) {
+  if (!name || name.length > 80 || !DATE.test(checkin) || !DATE.test(checkout)) {
     return json({ error: "bad_request" }, 400);
   }
   return cached(request, ctx, 6 * 3600, async () => {
-    const list = await amadeus(env, "/v1/reference-data/locations/hotels/by-city", {
-      cityCode: city,
-      radius: "15",
-      radiusUnit: "KM",
-      hotelSource: "ALL",
+    if (!env.TRAVELPAYOUTS_TOKEN) throw new Error("not_configured");
+    const params = new URLSearchParams({
+      location: name,
+      checkIn: checkin,
+      checkOut: checkout,
+      currency: "usd",
+      limit: "20",
+      token: env.TRAVELPAYOUTS_TOKEN,
     });
-    const ids = (list.data || []).slice(0, 40).map((h) => h.hotelId);
-    if (!ids.length) return { hotels: [], fetchedAt: new Date().toISOString() };
-    const offers = await amadeus(env, "/v3/shopping/hotel-offers", {
-      hotelIds: ids.join(","),
-      adults: "1",
-      checkInDate: checkin,
-      checkOutDate: checkout,
-      currency: "USD",
-      bestRateOnly: "true",
-    });
+    const res = await fetch(`https://engine.hotellook.com/api/v2/cache.json?${params}`);
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(`upstream_${res.status}:${detail.slice(0, 300)}`);
+    }
+    const body = await res.json();
     const nights = Math.max(1, Math.round((new Date(checkout) - new Date(checkin)) / 86_400_000));
-    const hotels = (offers.data || [])
-      .filter((h) => h.available !== false && h.offers && h.offers.length)
+    const hotels = (Array.isArray(body) ? body : [])
+      .filter((h) => h.priceFrom > 0)
       .map((h) => ({
-        name: h.hotel.name,
-        total: Number(h.offers[0].price.total),
-        perNight: Number(h.offers[0].price.total) / nights,
-        currency: h.offers[0].price.currency,
+        name: h.hotelName,
+        total: Number(h.priceFrom),
+        perNight: Number(h.priceFrom) / nights,
+        currency: "USD",
+        stars: h.stars || null,
       }))
       .sort((a, b) => a.perNight - b.perNight)
       .slice(0, 12);
@@ -162,7 +208,13 @@ export default {
     const url = new URL(request.url);
     try {
       if (url.pathname === "/api/health") {
-        return json({ ok: true, configured: Boolean(env.AMADEUS_API_KEY && env.AMADEUS_API_SECRET) });
+        const flightsProvider = env.DUFFEL_API_KEY ? "duffel" : env.TRAVELPAYOUTS_TOKEN ? "travelpayouts" : null;
+        const hotelsProvider = env.TRAVELPAYOUTS_TOKEN ? "travelpayouts" : null;
+        return json({
+          ok: true,
+          configured: Boolean(flightsProvider || hotelsProvider),
+          providers: { flights: flightsProvider, hotels: hotelsProvider },
+        });
       }
       if (url.pathname === "/api/flights") return await flights(request, url, env, ctx);
       if (url.pathname === "/api/hotels") return await hotels(request, url, env, ctx);
@@ -170,10 +222,10 @@ export default {
     } catch (e) {
       const msg = String(e.message || e);
       if (msg === "not_configured") {
-        return json({ error: "not_configured", hint: "Set AMADEUS_API_KEY and AMADEUS_API_SECRET with `wrangler secret put`." }, 503);
-      }
-      if (msg === "auth_failed") {
-        return json({ error: "auth_failed", hint: "Amadeus rejected the key/secret — re-check them in the Amadeus dashboard." }, 502);
+        return json({
+          error: "not_configured",
+          hint: "Set a provider token with `wrangler secret put TRAVELPAYOUTS_TOKEN` (or DUFFEL_API_KEY for flights).",
+        }, 503);
       }
       return json({ error: "upstream", detail: msg.slice(0, 400) }, 502);
     }

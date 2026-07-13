@@ -35,21 +35,24 @@ Fare and accommodation figures are **planning estimates** based on budget-carrie
 
 ## Live prices in-page (optional)
 
-Want actual live fares and hotel rates rendered inside the Flights and Stays tabs? The repo ships a tiny Cloudflare Worker (`workers/`) that proxies the [Amadeus Self-Service API](https://developers.amadeus.com) — your API key lives only in the worker's secrets, never in the page, the repo, or anyone's browser.
+Want actual live fares and hotel rates rendered inside the Flights and Stays tabs? The repo ships a tiny Cloudflare Worker (`workers/`) that proxies a travel-data API — your token lives only in the worker's secrets, never in the page, the repo, or anyone's browser. Two providers are supported (the worker auto-detects whichever token you set):
 
-1. **Get free API credentials** — sign up at developers.amadeus.com, create an app, note the API key and secret. The free test environment is fine to start (limited but real-ish data); switch to production later for full coverage.
+- **Travelpayouts** (recommended) — free for individuals, one token powers both flights (real Aviasales fares with booking links) and hotels (Hotellook rates). Sign up at travelpayouts.com, join the Aviasales + Hotellook programs, and copy your API token from the profile page.
+- **Duffel** (optional) — true real-time bookable flight offers; searching is effectively free at personal scale (they charge per booking). If both tokens are set, Duffel handles flights and Travelpayouts handles hotels.
+
+> ⚠️ The original integration targeted the Amadeus Self-Service API, but Amadeus shut down self-service for new registrations in July 2026 — hence the providers above.
+
+1. **Get a token** — travelpayouts.com (free) and/or duffel.com.
 2. **Deploy the worker** (free Cloudflare account):
    ```bash
    cd workers
    npx wrangler deploy
-   npx wrangler secret put AMADEUS_API_KEY      # paste key when prompted
-   npx wrangler secret put AMADEUS_API_SECRET   # paste secret when prompted
-   # optional, once you have production access:
-   # npx wrangler secret put AMADEUS_ENV        # enter: production
+   npx wrangler secret put TRAVELPAYOUTS_TOKEN   # paste token when prompted
+   # and/or: npx wrangler secret put DUFFEL_API_KEY
    ```
-3. **Connect the site** — open Backpacker Buddy, expand "⚡ Live prices" in the footer, paste your worker URL (e.g. `https://backpacker-buddy-api.you.workers.dev`), and hit Save. The site health-checks the worker and, from then on, flight searches show live bookable fares and city searches show live hotel rates — falling back to the regular search links whenever the API is unavailable.
+3. **Connect the site** — open Backpacker Buddy, expand "⚡ Live prices" in the footer, paste your worker URL (e.g. `https://backpacker-buddy-api.you.workers.dev`), and hit Save. The site health-checks the worker and, from then on, flight searches show live fares and city searches show live hotel rates — falling back to the regular search links whenever the API is unavailable.
 
-Responses are edge-cached (2 h flights, 6 h hotels) so the free quotas stretch far. Hostels don't appear in Amadeus — Hostelworld links remain the hostel path.
+Responses are edge-cached (2 h flights, 6 h hotels) so free quotas stretch far. Hostels don't appear in hotel APIs — Hostelworld links remain the hostel path.
 
 ## Project layout
 

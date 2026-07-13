@@ -53,16 +53,22 @@ async function renderLiveFlights(container, { from, to, depart, ret }) {
     container.innerHTML = `
       <h4 class="live-title">⚡ Live fares right now ${offers[0].roundTrip ? "(round-trip)" : "(one-way)"}</h4>
       <ul class="offer-list">
-        ${offers.slice(0, 6).map((o) => `
+        ${offers.slice(0, 6).map((o) => {
+          const when = `${fmtDay(o.departAt)} ${fmtTime(o.departAt)}${o.arriveAt ? " → " + fmtTime(o.arriveAt) : ""}`.trim();
+          const stops = o.stops === 0 ? "nonstop" : o.stops + " stop" + (o.stops > 1 ? "s" : "");
+          const sub = [when, stops, o.duration].filter(Boolean).join(" · ");
+          return `
           <li class="offer-row">
             <span class="offer-price">${fmt(o.price)}</span>
             <span class="offer-main">
               <strong>${o.carriers.join(" + ")}</strong>
-              <span class="offer-sub">${fmtDay(o.departAt)} ${fmtTime(o.departAt)} → ${fmtTime(o.arriveAt)} · ${o.stops === 0 ? "nonstop" : o.stops + " stop" + (o.stops > 1 ? "s" : "")} · ${o.duration}</span>
+              <span class="offer-sub">${sub}</span>
             </span>
-          </li>`).join("")}
+            ${o.link ? `<a class="btn btn-go offer-book" href="${o.link}" target="_blank" rel="noopener">Book ↗</a>` : ""}
+          </li>`;
+        }).join("")}
       </ul>
-      <p class="fine-print">Live prices via your Amadeus connection. Book on the airline's own site (see “Stay flexible” in Deal Hacks).</p>`;
+      <p class="fine-print">Live prices via your connected worker. Prefer booking on the airline's own site (see “Stay flexible” in Deal Hacks).</p>`;
   } catch (e) {
     if (seq !== flightSeq) return;
     container.innerHTML = liveErrorNote("fares");
@@ -70,11 +76,11 @@ async function renderLiveFlights(container, { from, to, depart, ret }) {
 }
 
 let hotelSeq = 0;
-async function renderLiveHotels(container, { city, checkin, checkout }) {
+async function renderLiveHotels(container, { name, checkin, checkout }) {
   const seq = ++hotelSeq;
   container.innerHTML = `<p class="live-note live-loading">⚡ Checking live room rates…</p>`;
   try {
-    const { hotels } = await liveFetch("/api/hotels", { city, checkin, checkout });
+    const { hotels } = await liveFetch("/api/hotels", { name, checkin, checkout });
     if (seq !== hotelSeq) return;
     if (!hotels.length) {
       container.innerHTML = `<p class="live-note">⚡ No live rates came back for this city — hostels rarely appear here anyway; use the search links above.</p>`;
@@ -86,10 +92,10 @@ async function renderLiveHotels(container, { city, checkin, checkout }) {
         ${hotels.slice(0, 8).map((h) => `
           <li class="offer-row">
             <span class="offer-price">${fmt(h.perNight)}<span class="price-sub">/night</span></span>
-            <span class="offer-main"><strong>${h.name}</strong><span class="offer-sub">${fmt(h.total)} total for your dates</span></span>
+            <span class="offer-main"><strong>${h.name}</strong><span class="offer-sub">${fmt(h.total)} total for your dates${h.stars ? " · " + "★".repeat(h.stars) : ""}</span></span>
           </li>`).join("")}
       </ul>
-      <p class="fine-print">Hotel rates via your Amadeus connection (hotels only — hostels still live on Hostelworld). Cross-check the Booking/Agoda links for the same property.</p>`;
+      <p class="fine-print">Rates via your connected worker (hotels only — hostels still live on Hostelworld). Cross-check the Booking/Agoda links for the same property.</p>`;
   } catch (e) {
     if (seq !== hotelSeq) return;
     container.innerHTML = liveErrorNote("room rates");
@@ -123,7 +129,7 @@ function initLiveSetup() {
       LIVE.set(url);
       status.textContent = body.configured
         ? "✅ Connected — live prices are on."
-        : "⚠️ Worker reached, but its Amadeus secrets aren't set yet (wrangler secret put AMADEUS_API_KEY / AMADEUS_API_SECRET).";
+        : "⚠️ Worker reached, but no provider token is set yet (wrangler secret put TRAVELPAYOUTS_TOKEN, or DUFFEL_API_KEY).";
       refresh();
       renderFlightResult();
       renderStayResult();
