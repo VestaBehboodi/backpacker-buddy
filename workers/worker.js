@@ -112,26 +112,42 @@ async function duffelFlights(env, { from, to, depart, ret }) {
 }
 
 /* ---------- flights: Travelpayouts / Aviasales (cached real fares) ---------- */
-async function tpFlights(env, { from, to, depart, ret }) {
+async function tpQuery(env, { from, to, departAt, returnAt }) {
   const params = new URLSearchParams({
     origin: from,
     destination: to,
-    departure_at: depart,
-    one_way: ret ? "false" : "true",
+    departure_at: departAt,
+    one_way: returnAt ? "false" : "true",
     direct: "false",
     sorting: "price",
     currency: "usd",
     limit: "15",
     token: env.TRAVELPAYOUTS_TOKEN,
   });
-  if (ret) params.set("return_at", ret);
+  if (returnAt) params.set("return_at", returnAt);
   const res = await fetch(`https://api.travelpayouts.com/aviasales/v3/prices_for_dates?${params}`);
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new Error(`upstream_${res.status}:${detail.slice(0, 300)}`);
   }
   const body = await res.json();
-  return (body.data || []).map((f) => ({
+  return body.data || [];
+}
+
+async function tpFlights(env, { from, to, depart, ret }) {
+  // Exact dates first; the cache is often sparse for a single long-haul
+  // date, so fall back to the whole month's cheapest fares (each result
+  // carries its own real date, which the UI displays).
+  let rows = await tpQuery(env, { from, to, departAt: depart, returnAt: ret });
+  if (!rows.length) {
+    rows = await tpQuery(env, {
+      from,
+      to,
+      departAt: depart.slice(0, 7),
+      returnAt: ret ? ret.slice(0, 7) : "",
+    });
+  }
+  return rows.map((f) => ({
     price: Number(f.price),
     currency: "USD",
     carriers: [carrierName(f.airline)],

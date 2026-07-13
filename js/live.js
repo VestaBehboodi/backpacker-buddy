@@ -30,8 +30,15 @@ async function liveFetch(path, params, timeoutMs = 9000) {
   }
 }
 
-const liveErrorNote = (what) =>
-  `<p class="live-note">⚡ Couldn't load live ${what} right now — the search links above always work.</p>`;
+const liveErrorNote = (what, err) => {
+  let detail = err && err.name === "AbortError"
+    ? "the request timed out"
+    : String((err && err.message) || "unknown error").slice(0, 140);
+  if (/failed to fetch|networkerror|load failed/i.test(detail)) {
+    detail = "the request was blocked before it left your browser — often an ad-blocker or privacy shield; try allowing this site";
+  }
+  return `<p class="live-note">⚡ Couldn't load live ${what} right now (${detail}) — the search links above always work.</p>`;
+};
 
 const fmtTime = (iso) => iso ? iso.slice(11, 16) : "";
 const fmtDay = (iso) => iso ? iso.slice(5, 10).replace("-", "/") : "";
@@ -74,7 +81,7 @@ async function renderLiveFlights(container, { from, to, depart, ret }) {
       <p class="fine-print">Live prices via your connected worker. Prefer booking on the airline's own site (see “Stay flexible” in Deal Hacks).</p>`;
   } catch (e) {
     if (seq !== flightSeq) return;
-    container.innerHTML = liveErrorNote("fares");
+    container.innerHTML = liveErrorNote("fares", e);
   }
 }
 
@@ -101,7 +108,7 @@ async function renderLiveHotels(container, { name, checkin, checkout }) {
       <p class="fine-print">Rates via your connected worker (hotels only — hostels still live on Hostelworld). Cross-check the Booking/Agoda links for the same property.</p>`;
   } catch (e) {
     if (seq !== hotelSeq) return;
-    container.innerHTML = liveErrorNote("room rates");
+    container.innerHTML = liveErrorNote("room rates", e);
   }
 }
 
