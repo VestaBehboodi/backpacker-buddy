@@ -1,0 +1,8 @@
+name = "backpacker-buddy-api"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# Secrets (set these with `npx wrangler secret put <NAME>`, never in this file):
+#   AMADEUS_API_KEY
+#   AMADEUS_API_SECRET
+#   AMADEUS_ENV        optional: "production" (defaults to "test")

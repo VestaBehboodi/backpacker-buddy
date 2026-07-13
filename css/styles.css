@@ -274,3 +274,49 @@ footer {
   font-size: 0.82rem;
   padding: 1.5rem 1rem 2.5rem;
 }
+
+/* ---- live prices ---- */
+.live-block { margin-top: 1rem; }
+.live-title { margin: 0 0 0.4rem; font-size: 1rem; color: var(--accent-dark); }
+.live-note { font-size: 0.9rem; color: var(--ink-soft); margin: 0.4rem 0; }
+.live-loading { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .live-loading { animation: none; } }
+
+ul.offer-list { list-style: none; padding: 0; margin: 0; }
+.offer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.45rem 0.2rem;
+  border-bottom: 1px dashed var(--line);
+}
+.offer-row:last-child { border-bottom: none; }
+.offer-price { font-weight: 800; color: var(--brand); font-size: 1.1rem; min-width: 4.5rem; font-variant-numeric: tabular-nums; }
+.offer-main { display: flex; flex-direction: column; }
+.offer-sub { font-size: 0.82rem; color: var(--ink-soft); }
+
+.live-setup {
+  max-width: 640px;
+  margin: 0.8rem auto 0;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.7rem 1rem;
+}
+.live-setup summary { cursor: pointer; font-weight: 700; }
+.live-setup code { background: var(--bg); padding: 0.1rem 0.35rem; border-radius: 5px; }
+.live-setup a { color: var(--brand); }
+.live-setup-row { display: flex; gap: 0.5rem; }
+.live-setup-row input {
+  flex: 1;
+  font: inherit;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--ink);
+}
+.live-status { font-weight: 600; min-height: 1em; }
+#live-indicator { color: var(--accent-dark); font-weight: 800; }

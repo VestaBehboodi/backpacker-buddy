@@ -147,16 +147,19 @@ function renderFlightResult() {
 
   const corridorExtra = deal && corridor ? `<p class="corridor-note">🧭 <strong>${corridor.label}:</strong> ${corridor.advice}</p>` : "";
 
+  const liveReady = LIVE.enabled() && from.code && to.code && depart;
   out.innerHTML = `
     <div class="card result-card">
       <h3>${from.name} → ${to.name}</h3>
       ${intel}
       ${corridorExtra}
+      ${liveReady ? `<div id="live-flights" class="live-block"></div>` : ""}
       <div class="link-row">
         ${links.map((l) => `<a class="btn btn-go" href="${l.url}" target="_blank" rel="noopener">Live prices on ${l.name} ↗</a>`).join("")}
       </div>
       <p class="fine-print">Estimates are typical one-way USD fares from budget-carrier sale history. The buttons above open today's live prices for your dates.</p>
     </div>`;
+  if (liveReady) renderLiveFlights($("#live-flights"), { from: from.code, to: to.code, depart, ret });
 }
 
 /* ---------- stays ---------- */
@@ -168,6 +171,16 @@ function populateStayDatalist() {
     dl.appendChild(opt);
   });
   $("#stay-city").value = "Bangkok, Thailand";
+}
+
+/* Find the IATA city code for a stay label so live hotel rates can load. */
+function stayCityCode(label) {
+  const attempts = [label, label.split(",")[0].split("(")[0].trim()];
+  for (const text of attempts) {
+    const hit = resolveCity(text);
+    if (hit && hit.code) return hit.code;
+  }
+  return null;
 }
 
 /* Match typed text to a STAYS key ("Bangkok, Thailand" or "bangkok"). */
@@ -210,6 +223,9 @@ function renderStayResult() {
   }
 
   const links = stayLinks(resolved.label, checkin, checkout, budget, flexOnly);
+  const liveCity = stayCityCode(resolved.label);
+  const liveReady = LIVE.enabled() && liveCity && checkin && checkout;
+  const liveBlock = liveReady ? `<div id="live-hotels" class="live-block"></div>` : "";
   const flexNote = flexOnly
     ? `<p class="agent-tip">↩️ <strong>Free cancellation only:</strong> the Booking.com link is filtered to free-cancellation rates. On Hostelworld pick the “Free cancellation” rate at checkout; on Airbnb look for “Flexible” policy listings.</p>`
     : "";
@@ -221,10 +237,12 @@ function renderStayResult() {
         <p>I don't have curated intel for this one (yet!) — but the searches below work for any city on Earth, and the golden rule travels with you:</p>
         <p class="agent-tip">🧼 <strong>Clean &amp; comfy filter:</strong> rating ≥ 8.3 with 150+ reviews, then skim the recent negative reviews. The Booking link is pre-filtered to 8.0+, Agoda is sorted cheapest-first.</p>
         ${flexNote}
+        ${liveBlock}
         <div class="link-row">
           ${links.map((l) => `<a class="btn btn-go" href="${l.url}" target="_blank" rel="noopener">Search ${l.name} ↗</a>`).join("")}
         </div>
       </div>`;
+    if (liveReady) renderLiveHotels($("#live-hotels"), { city: liveCity, checkin, checkout });
     return;
   }
 
@@ -251,10 +269,12 @@ function renderStayResult() {
       <p class="agent-tip">💡 ${s.tip}</p>
       <p class="agent-tip">🧼 <strong>Clean &amp; comfy filter:</strong> rating ≥ 8.3 with 150+ reviews, then skim the recent negative reviews. The Booking link below is pre-filtered to 8.0+, Agoda is sorted cheapest-first.</p>
       ${flexNote}
+      ${liveBlock}
       <div class="link-row">
         ${links.map((l) => `<a class="btn btn-go" href="${l.url}" target="_blank" rel="noopener">Search ${l.name} ↗</a>`).join("")}
       </div>
     </div>`;
+  if (liveReady) renderLiveHotels($("#live-hotels"), { city: liveCity, checkin, checkout });
 }
 
 /* ---------- routes ---------- */
@@ -549,6 +569,7 @@ document.addEventListener("DOMContentLoaded", () => {
   populateCityDatalist();
   populateStayDatalist();
   populateBuilderInputs();
+  initLiveSetup();
   renderHacks();
   renderRoutes();
 

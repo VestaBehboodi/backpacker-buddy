@@ -31,11 +31,32 @@ It's a plain static site, so it deploys anywhere (GitHub Pages, Netlify, Vercel)
 
 Fare and accommodation figures are **planning estimates** based on budget-carrier sale history and typical low-season pricing — they help you judge what a *good* price looks like. Every result links out to live searches pre-filled with your dates, so real-time prices are always one click away. No API keys required.
 
+## Live prices in-page (optional)
+
+Want actual live fares and hotel rates rendered inside the Flights and Stays tabs? The repo ships a tiny Cloudflare Worker (`workers/`) that proxies the [Amadeus Self-Service API](https://developers.amadeus.com) — your API key lives only in the worker's secrets, never in the page, the repo, or anyone's browser.
+
+1. **Get free API credentials** — sign up at developers.amadeus.com, create an app, note the API key and secret. The free test environment is fine to start (limited but real-ish data); switch to production later for full coverage.
+2. **Deploy the worker** (free Cloudflare account):
+   ```bash
+   cd workers
+   npx wrangler deploy
+   npx wrangler secret put AMADEUS_API_KEY      # paste key when prompted
+   npx wrangler secret put AMADEUS_API_SECRET   # paste secret when prompted
+   # optional, once you have production access:
+   # npx wrangler secret put AMADEUS_ENV        # enter: production
+   ```
+3. **Connect the site** — open Backpacker Buddy, expand "⚡ Live prices" in the footer, paste your worker URL (e.g. `https://backpacker-buddy-api.you.workers.dev`), and hit Save. The site health-checks the worker and, from then on, flight searches show live bookable fares and city searches show live hotel rates — falling back to the regular search links whenever the API is unavailable.
+
+Responses are edge-cached (2 h flights, 6 h hotels) so the free quotas stretch far. Hostels don't appear in Amadeus — Hostelworld links remain the hostel path.
+
 ## Project layout
 
 ```
-index.html        app shell (tabs: Flights / Stays / Routes / Deal Hacks)
-css/styles.css    styling, light + dark mode
-js/data.js        route deals, corridor advice, city stay intel, route strategies
-js/app.js         search logic, deep-link builders, route cost comparison
+index.html          app shell (tabs: Flights / Stays / Routes / Deal Hacks)
+css/styles.css      styling, light + dark mode
+js/data.js          route deals, corridor advice, city stay intel, route
+                    strategies, country atlas for the route builder
+js/app.js           search logic, deep-link builders, route planning + builder
+js/live.js          optional live-prices client (talks to the worker)
+workers/worker.js   Cloudflare Worker: Amadeus proxy with caching + CORS
 ```
