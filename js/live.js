@@ -23,7 +23,10 @@ async function liveFetch(path, params, timeoutMs = 9000) {
   try {
     const res = await fetch(`${LIVE.base()}${path}?${new URLSearchParams(params)}`, { signal: ctrl.signal });
     const body = await res.json();
-    if (!res.ok || body.error) throw new Error(body.hint || body.error || `HTTP ${res.status}`);
+    if (!res.ok || body.error) {
+      const parts = [body.error, body.detail, body.hint].filter(Boolean).join(" — ");
+      throw new Error(parts || `HTTP ${res.status}`);
+    }
     return body;
   } finally {
     clearTimeout(timer);
