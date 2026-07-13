@@ -26,6 +26,8 @@ python3 -m http.server 8000
 ```
 
 It's a plain static site, so it deploys anywhere (GitHub Pages, Netlify, Vercel) as-is.
+A GitHub Pages workflow is included (`.github/workflows/pages.yml`) — enable it once under
+**Settings → Pages → Source: GitHub Actions** and every push deploys the site automatically.
 
 ## How pricing works
 
