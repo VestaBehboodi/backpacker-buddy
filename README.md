@@ -38,7 +38,7 @@ Fare and accommodation figures are **planning estimates** based on budget-carrie
 Want actual live fares and hotel rates rendered inside the Flights and Stays tabs? The repo ships a tiny Cloudflare Worker (`workers/`) that proxies a travel-data API — your token lives only in the worker's secrets, never in the page, the repo, or anyone's browser. Two providers are supported (the worker auto-detects whichever token you set):
 
 - **Travelpayouts** (recommended) — free for individuals, one token powers both flights (real Aviasales fares with booking links) and hotels (Hotellook rates). Sign up at travelpayouts.com, join the Aviasales + Hotellook programs, and copy your API token from the profile page.
-- **Duffel** (optional) — true real-time bookable flight offers; searching is effectively free at personal scale (they charge per booking). If both tokens are set, Duffel handles flights and Travelpayouts handles hotels.
+- **Duffel** (optional) — true real-time bookable flight offers; searching is effectively free at personal scale (they charge per booking). If both tokens are set, flight searches query **both providers in parallel** and merge the results cheapest-first, each fare badged "live" (Duffel) or "recent" (Aviasales) — Duffel is strongest on full-service and NDC fares, Aviasales on low-cost carriers, so together they give the widest coverage. Hotels always come from Travelpayouts/Hotellook.
 
 > ⚠️ The original integration targeted the Amadeus Self-Service API, but Amadeus shut down self-service for new registrations in July 2026 — hence the providers above.
 

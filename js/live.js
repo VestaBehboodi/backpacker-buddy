@@ -57,11 +57,14 @@ async function renderLiveFlights(container, { from, to, depart, ret }) {
           const when = `${fmtDay(o.departAt)} ${fmtTime(o.departAt)}${o.arriveAt ? " → " + fmtTime(o.arriveAt) : ""}`.trim();
           const stops = o.stops === 0 ? "nonstop" : o.stops + " stop" + (o.stops > 1 ? "s" : "");
           const sub = [when, stops, o.duration].filter(Boolean).join(" · ");
+          const badge = o.source
+            ? `<span class="offer-source ${o.source === "duffel" ? "offer-source-live" : "offer-source-cached"}">${o.source === "duffel" ? "live" : "recent"}</span>`
+            : "";
           return `
           <li class="offer-row">
             <span class="offer-price">${fmt(o.price)}</span>
             <span class="offer-main">
-              <strong>${o.carriers.join(" + ")}</strong>
+              <strong>${o.carriers.join(" + ")} ${badge}</strong>
               <span class="offer-sub">${sub}</span>
             </span>
             ${o.link ? `<a class="btn btn-go offer-book" href="${o.link}" target="_blank" rel="noopener">Book ↗</a>` : ""}

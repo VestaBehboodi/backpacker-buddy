@@ -293,8 +293,19 @@ ul.offer-list { list-style: none; padding: 0; margin: 0; }
 }
 .offer-row:last-child { border-bottom: none; }
 .offer-price { font-weight: 800; color: var(--brand); font-size: 1.1rem; min-width: 4.5rem; font-variant-numeric: tabular-nums; }
-.offer-main { display: flex; flex-direction: column; }
+.offer-main { display: flex; flex-direction: column; flex: 1; }
 .offer-sub { font-size: 0.82rem; color: var(--ink-soft); }
+.offer-source {
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  vertical-align: middle;
+}
+.offer-source-live { background: var(--good); color: var(--brand-dark); border: 1px solid var(--brand); }
+.offer-source-cached { background: var(--warn); color: var(--accent-dark); border: 1px solid var(--accent); }
 
 .live-setup {
   max-width: 640px;

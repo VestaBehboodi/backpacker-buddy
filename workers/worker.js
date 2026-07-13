@@ -154,10 +154,23 @@ async function flights(request, url, env, ctx) {
   }
   return cached(request, ctx, 2 * 3600, async () => {
     const q = { from, to, depart, ret };
-    let offers;
-    if (env.DUFFEL_API_KEY) offers = await duffelFlights(env, q);
-    else if (env.TRAVELPAYOUTS_TOKEN) offers = await tpFlights(env, q);
-    else throw new Error("not_configured");
+    // Query every configured provider in parallel and merge cheapest-first:
+    // Duffel = real-time bookable offers, Aviasales = recently-seen fares
+    // (stronger on low-cost carriers). One failing provider doesn't sink the other.
+    const tasks = [];
+    if (env.DUFFEL_API_KEY) {
+      tasks.push(duffelFlights(env, q).then((o) => o.map((x) => ({ ...x, source: "duffel" }))));
+    }
+    if (env.TRAVELPAYOUTS_TOKEN) {
+      tasks.push(tpFlights(env, q).then((o) => o.map((x) => ({ ...x, source: "aviasales" }))));
+    }
+    if (!tasks.length) throw new Error("not_configured");
+    const results = await Promise.allSettled(tasks);
+    const offers = results
+      .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
+      .sort((a, b) => a.price - b.price)
+      .slice(0, 12);
+    if (!offers.length && results.every((r) => r.status === "rejected")) throw results[0].reason;
     return { offers, fetchedAt: new Date().toISOString() };
   });
 }
