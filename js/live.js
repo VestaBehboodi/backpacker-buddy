@@ -54,7 +54,7 @@ async function renderLiveFlights(container, { from, to, depart, ret }) {
   try {
     const params = { from, to, depart };
     if (ret) params["return"] = ret;
-    const { offers } = await liveFetch("/api/flights", params);
+    const { offers, note } = await liveFetch("/api/flights", params);
     if (seq !== flightSeq) return;
     if (!offers.length) {
       container.innerHTML = `<p class="live-note">⚡ No live fares came back for these dates — try the search links above.</p>`;
@@ -62,6 +62,7 @@ async function renderLiveFlights(container, { from, to, depart, ret }) {
     }
     container.innerHTML = `
       <h4 class="live-title">⚡ Live fares right now ${offers[0].roundTrip ? "(round-trip)" : "(one-way)"}</h4>
+      ${note ? `<p class="live-note">🗓️ ${note}</p>` : ""}
       <ul class="offer-list">
         ${offers.slice(0, 6).map((o) => {
           const when = `${fmtDay(o.departAt)} ${fmtTime(o.departAt)}${o.arriveAt ? " → " + fmtTime(o.arriveAt) : ""}`.trim();

@@ -134,10 +134,30 @@ async function tpQuery(env, { from, to, departAt, returnAt }) {
   return body.data || [];
 }
 
+/* Cheapest recently-seen fare per upcoming month — dense even for dates
+   far in the future, where the exact-date cache is empty. */
+async function tpGroupedByMonth(env, { from, to }) {
+  const params = new URLSearchParams({
+    origin: from,
+    destination: to,
+    group_by: "month",
+    currency: "usd",
+    token: env.TRAVELPAYOUTS_TOKEN,
+  });
+  const res = await fetch(`https://api.travelpayouts.com/aviasales/v3/grouped_prices?${params}`);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`upstream_${res.status}:${detail.slice(0, 300)}`);
+  }
+  const body = await res.json();
+  return Object.values(body.data || {}).filter((f) => f && f.price > 0);
+}
+
 async function tpFlights(env, { from, to, depart, ret }) {
-  // Exact dates first; the cache is often sparse for a single long-haul
-  // date, so fall back to the whole month's cheapest fares (each result
-  // carries its own real date, which the UI displays).
+  // Level 1: exact dates. Level 2: the whole month (the cache is often
+  // sparse for a single long-haul date). Level 3: cheapest fare per
+  // upcoming month — sparse-proof, and each result carries its real date.
+  let note = null;
   let rows = await tpQuery(env, { from, to, departAt: depart, returnAt: ret });
   if (!rows.length) {
     rows = await tpQuery(env, {
@@ -146,8 +166,13 @@ async function tpFlights(env, { from, to, depart, ret }) {
       departAt: depart.slice(0, 7),
       returnAt: ret ? ret.slice(0, 7) : "",
     });
+    if (rows.length) note = `Nothing cached for ${depart} exactly — showing the cheapest recently-seen fares that month.`;
   }
-  return rows.map((f) => ({
+  if (!rows.length) {
+    rows = await tpGroupedByMonth(env, { from, to });
+    if (rows.length) note = "Nothing cached near your dates yet (few travellers have searched them) — showing the cheapest recently-seen fare for each upcoming month on this route.";
+  }
+  const offers = rows.map((f) => ({
     price: Number(f.price),
     currency: "USD",
     carriers: [carrierName(f.airline)],
@@ -158,6 +183,7 @@ async function tpFlights(env, { from, to, depart, ret }) {
     roundTrip: Boolean(ret),
     link: f.link ? `https://www.aviasales.com${f.link}` : null,
   })).sort((a, b) => a.price - b.price).slice(0, 10);
+  return { offers, note };
 }
 
 async function flights(request, url, env, ctx) {
@@ -175,19 +201,27 @@ async function flights(request, url, env, ctx) {
     // (stronger on low-cost carriers). One failing provider doesn't sink the other.
     const tasks = [];
     if (env.DUFFEL_API_KEY) {
-      tasks.push(duffelFlights(env, q).then((o) => o.map((x) => ({ ...x, source: "duffel" }))));
+      tasks.push(duffelFlights(env, q).then((o) => ({
+        offers: o.map((x) => ({ ...x, source: "duffel" })),
+        note: null,
+      })));
     }
     if (env.TRAVELPAYOUTS_TOKEN) {
-      tasks.push(tpFlights(env, q).then((o) => o.map((x) => ({ ...x, source: "aviasales" }))));
+      tasks.push(tpFlights(env, q).then(({ offers, note }) => ({
+        offers: offers.map((x) => ({ ...x, source: "aviasales" })),
+        note,
+      })));
     }
     if (!tasks.length) throw new Error("not_configured");
     const results = await Promise.allSettled(tasks);
-    const offers = results
-      .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
+    const fulfilled = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+    const offers = fulfilled
+      .flatMap((v) => v.offers)
       .sort((a, b) => a.price - b.price)
       .slice(0, 12);
-    if (!offers.length && results.every((r) => r.status === "rejected")) throw results[0].reason;
-    return { offers, fetchedAt: new Date().toISOString() };
+    if (!offers.length && !fulfilled.length) throw results[0].reason;
+    const note = fulfilled.map((v) => v.note).filter(Boolean).join(" ") || null;
+    return { offers, note, fetchedAt: new Date().toISOString() };
   });
 }
 
