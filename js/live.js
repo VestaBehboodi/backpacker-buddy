@@ -71,6 +71,12 @@ async function renderLiveFlights(container, { from, to, depart, ret }) {
           const badge = o.source
             ? `<span class="offer-source ${o.source === "duffel" ? "offer-source-live" : "offer-source-cached"}">${o.source === "duffel" ? "live" : "recent"}</span>`
             : "";
+          // Offers without a direct booking URL (live/Duffel ones) get a
+          // Google Flights search for that exact route and date instead.
+          const gq = `Flights from ${from} to ${to} on ${(o.departAt || depart).slice(0, 10)}${o.roundTrip ? "" : " one way"}`;
+          const bookBtn = o.link
+            ? `<a class="btn btn-go offer-book" href="${o.link}" target="_blank" rel="noopener">Book ↗</a>`
+            : `<a class="btn btn-go offer-book" href="https://www.google.com/travel/flights?q=${encodeURIComponent(gq)}" target="_blank" rel="noopener" title="Find this flight on Google Flights to book it">Find ↗</a>`;
           return `
           <li class="offer-row">
             <span class="offer-price">${fmt(o.price)}</span>
@@ -78,7 +84,7 @@ async function renderLiveFlights(container, { from, to, depart, ret }) {
               <strong>${o.carriers.join(" + ")} ${badge}</strong>
               <span class="offer-sub">${sub}</span>
             </span>
-            ${o.link ? `<a class="btn btn-go offer-book" href="${o.link}" target="_blank" rel="noopener">Book ↗</a>` : ""}
+            ${bookBtn}
           </li>`;
         }).join("")}
       </ul>

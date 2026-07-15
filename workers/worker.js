@@ -74,6 +74,13 @@ const minsToDuration = (mins) => {
   return `${h}h${String(m).padStart(2, "0")}m`;
 };
 
+/* "P1DT2H35M" → "1d 2h 35m" */
+const isoToDuration = (s) => {
+  const m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?/.exec(s || "");
+  if (!m) return "";
+  return [m[1] && `${m[1]}d`, m[2] && `${m[2]}h`, m[3] && `${m[3]}m`].filter(Boolean).join(" ");
+};
+
 /* ---------- flights: Duffel (real-time offers) ---------- */
 async function duffelFlights(env, { from, to, depart, ret }) {
   const slices = [{ origin: from, destination: to, departure_date: depart }];
@@ -103,7 +110,7 @@ async function duffelFlights(env, { from, to, depart, ret }) {
       currency: o.total_currency,
       carriers: names,
       stops: segs.length - 1,
-      duration: (o.slices[0].duration || "").replace("PT", "").toLowerCase(),
+      duration: isoToDuration(o.slices[0].duration),
       departAt: segs[0].departing_at,
       arriveAt: segs[segs.length - 1].arriving_at,
       roundTrip: o.slices.length > 1,
