@@ -3,10 +3,15 @@
    degrades gracefully back to the deep links when it's off or erroring. */
 "use strict";
 
+/* The site's own worker — visitors get live prices with no setup.
+   Forks: point this at your own deployment (see workers/README notes),
+   or clear it and use the footer panel per-browser. */
+const LIVE_DEFAULT_BASE = "https://backpacker-buddy-api.vesta-spenta.workers.dev";
+
 const LIVE = {
   base() {
-    try { return (localStorage.getItem("bb-live-api") || "").trim().replace(/\/+$/, ""); }
-    catch { return ""; }
+    try { return (localStorage.getItem("bb-live-api") || LIVE_DEFAULT_BASE).trim().replace(/\/+$/, ""); }
+    catch { return LIVE_DEFAULT_BASE; }
   },
   set(url) {
     try {
@@ -135,7 +140,8 @@ function initLiveSetup() {
     const url = input.value.trim().replace(/\/+$/, "");
     if (!url) {
       LIVE.set("");
-      status.textContent = "Live prices turned off.";
+      status.textContent = "Reset to the site's built-in live prices.";
+      input.value = LIVE.base();
       refresh();
       renderFlightResult();
       renderStayResult();

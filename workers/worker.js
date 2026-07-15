@@ -20,11 +20,43 @@
    Then paste the worker URL into the "Live prices" panel in the site footer.
    ========================================================================= */
 
+/* Only these sites may call the worker from a browser — keeps strangers'
+   websites from spending your API quota. Add your custom domain here when
+   you get one. Direct visits/tools (no Origin header) are unaffected. */
+const ALLOWED_ORIGINS = [
+  "https://vestabehboodi.github.io",
+  "http://localhost:8000",
+  "http://127.0.0.1:8000",
+];
+
 const CORS = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": ALLOWED_ORIGINS[0],
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
+  "Vary": "Origin",
 };
+
+const corsFor = (request) => {
+  const origin = request.headers.get("Origin");
+  return origin && ALLOWED_ORIGINS.includes(origin)
+    ? { ...CORS, "Access-Control-Allow-Origin": origin }
+    : CORS;
+};
+
+/* Light per-IP rate limit (per worker instance — a deterrent, not a wall). */
+const rateBuckets = new Map();
+function rateLimited(request, limit = 30, windowMs = 60_000) {
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const now = Date.now();
+  const b = rateBuckets.get(ip);
+  if (!b || now - b.start > windowMs) {
+    rateBuckets.set(ip, { start: now, count: 1 });
+    if (rateBuckets.size > 5000) rateBuckets.clear();
+    return false;
+  }
+  b.count += 1;
+  return b.count > limit;
+}
 
 const json = (body, status = 200, extra = {}) =>
   new Response(JSON.stringify(body), {
@@ -274,30 +306,43 @@ async function hotels(request, url, env, ctx) {
 
 export default {
   async fetch(request, env, ctx) {
-    if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
+    const cors = corsFor(request);
+    if (request.method === "OPTIONS") return new Response(null, { headers: cors });
+    if (rateLimited(request)) {
+      return new Response(JSON.stringify({ error: "rate_limited", hint: "Slow down a little — try again in a minute." }), {
+        status: 429,
+        headers: { "Content-Type": "application/json", ...cors },
+      });
+    }
     const url = new URL(request.url);
+    // Re-stamp CORS per request so cached responses work from any allowed origin.
+    const finalize = (res) => {
+      const headers = new Headers(res.headers);
+      for (const [k, v] of Object.entries(cors)) headers.set(k, v);
+      return new Response(res.body, { status: res.status, headers });
+    };
     try {
       if (url.pathname === "/api/health") {
         const flightsProvider = env.DUFFEL_API_KEY ? "duffel" : env.TRAVELPAYOUTS_TOKEN ? "travelpayouts" : null;
         const hotelsProvider = env.TRAVELPAYOUTS_TOKEN ? "travelpayouts" : null;
-        return json({
+        return finalize(json({
           ok: true,
           configured: Boolean(flightsProvider || hotelsProvider),
           providers: { flights: flightsProvider, hotels: hotelsProvider },
-        });
+        }));
       }
-      if (url.pathname === "/api/flights") return await flights(request, url, env, ctx);
-      if (url.pathname === "/api/hotels") return await hotels(request, url, env, ctx);
-      return json({ error: "not_found" }, 404);
+      if (url.pathname === "/api/flights") return finalize(await flights(request, url, env, ctx));
+      if (url.pathname === "/api/hotels") return finalize(await hotels(request, url, env, ctx));
+      return finalize(json({ error: "not_found" }, 404));
     } catch (e) {
       const msg = String(e.message || e);
       if (msg === "not_configured") {
-        return json({
+        return finalize(json({
           error: "not_configured",
           hint: "Set a provider token with `wrangler secret put TRAVELPAYOUTS_TOKEN` (or DUFFEL_API_KEY for flights).",
-        }, 503);
+        }, 503));
       }
-      return json({ error: "upstream", detail: msg.slice(0, 400) }, 502);
+      return finalize(json({ error: "upstream", detail: msg.slice(0, 400) }, 502));
     }
   },
 };
