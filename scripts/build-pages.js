@@ -19,8 +19,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 
-/* Swap this when the custom domain goes live. */
-const SITE_BASE = "https://vestabehboodi.github.io/backpacker-buddy";
+const SITE_BASE = "https://backpackerbuddy.app";
 
 const ROOT = path.join(__dirname, "..");
 

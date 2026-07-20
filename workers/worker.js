@@ -24,6 +24,8 @@
    websites from spending your API quota. Add your custom domain here when
    you get one. Direct visits/tools (no Origin header) are unaffected. */
 const ALLOWED_ORIGINS = [
+  "https://backpackerbuddy.app",
+  "https://www.backpackerbuddy.app",
   "https://vestabehboodi.github.io",
   "http://localhost:8000",
   "http://127.0.0.1:8000",
