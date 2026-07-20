@@ -20,11 +20,43 @@
    Then paste the worker URL into the "Live prices" panel in the site footer.
    ========================================================================= */
 
+/* Only these sites may call the worker from a browser — keeps strangers'
+   websites from spending your API quota. Add your custom domain here when
+   you get one. Direct visits/tools (no Origin header) are unaffected. */
+const ALLOWED_ORIGINS = [
+  "https://vestabehboodi.github.io",
+  "http://localhost:8000",
+  "http://127.0.0.1:8000",
+];
+
 const CORS = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": ALLOWED_ORIGINS[0],
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
+  "Vary": "Origin",
 };
+
+const corsFor = (request) => {
+  const origin = request.headers.get("Origin");
+  return origin && ALLOWED_ORIGINS.includes(origin)
+    ? { ...CORS, "Access-Control-Allow-Origin": origin }
+    : CORS;
+};
+
+/* Light per-IP rate limit (per worker instance — a deterrent, not a wall). */
+const rateBuckets = new Map();
+function rateLimited(request, limit = 30, windowMs = 60_000) {
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const now = Date.now();
+  const b = rateBuckets.get(ip);
+  if (!b || now - b.start > windowMs) {
+    rateBuckets.set(ip, { start: now, count: 1 });
+    if (rateBuckets.size > 5000) rateBuckets.clear();
+    return false;
+  }
+  b.count += 1;
+  return b.count > limit;
+}
 
 const json = (body, status = 200, extra = {}) =>
   new Response(JSON.stringify(body), {
@@ -74,6 +106,13 @@ const minsToDuration = (mins) => {
   return `${h}h${String(m).padStart(2, "0")}m`;
 };
 
+/* "P1DT2H35M" → "1d 2h 35m" */
+const isoToDuration = (s) => {
+  const m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?/.exec(s || "");
+  if (!m) return "";
+  return [m[1] && `${m[1]}d`, m[2] && `${m[2]}h`, m[3] && `${m[3]}m`].filter(Boolean).join(" ");
+};
+
 /* ---------- flights: Duffel (real-time offers) ---------- */
 async function duffelFlights(env, { from, to, depart, ret }) {
   const slices = [{ origin: from, destination: to, departure_date: depart }];
@@ -103,7 +142,7 @@ async function duffelFlights(env, { from, to, depart, ret }) {
       currency: o.total_currency,
       carriers: names,
       stops: segs.length - 1,
-      duration: (o.slices[0].duration || "").replace("PT", "").toLowerCase(),
+      duration: isoToDuration(o.slices[0].duration),
       departAt: segs[0].departing_at,
       arriveAt: segs[segs.length - 1].arriving_at,
       roundTrip: o.slices.length > 1,
@@ -134,10 +173,30 @@ async function tpQuery(env, { from, to, departAt, returnAt }) {
   return body.data || [];
 }
 
+/* Cheapest recently-seen fare per upcoming month — dense even for dates
+   far in the future, where the exact-date cache is empty. */
+async function tpGroupedByMonth(env, { from, to }) {
+  const params = new URLSearchParams({
+    origin: from,
+    destination: to,
+    group_by: "month",
+    currency: "usd",
+    token: env.TRAVELPAYOUTS_TOKEN,
+  });
+  const res = await fetch(`https://api.travelpayouts.com/aviasales/v3/grouped_prices?${params}`);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`upstream_${res.status}:${detail.slice(0, 300)}`);
+  }
+  const body = await res.json();
+  return Object.values(body.data || {}).filter((f) => f && f.price > 0);
+}
+
 async function tpFlights(env, { from, to, depart, ret }) {
-  // Exact dates first; the cache is often sparse for a single long-haul
-  // date, so fall back to the whole month's cheapest fares (each result
-  // carries its own real date, which the UI displays).
+  // Level 1: exact dates. Level 2: the whole month (the cache is often
+  // sparse for a single long-haul date). Level 3: cheapest fare per
+  // upcoming month — sparse-proof, and each result carries its real date.
+  let note = null;
   let rows = await tpQuery(env, { from, to, departAt: depart, returnAt: ret });
   if (!rows.length) {
     rows = await tpQuery(env, {
@@ -146,8 +205,13 @@ async function tpFlights(env, { from, to, depart, ret }) {
       departAt: depart.slice(0, 7),
       returnAt: ret ? ret.slice(0, 7) : "",
     });
+    if (rows.length) note = `Nothing cached for ${depart} exactly — showing the cheapest recently-seen fares that month.`;
   }
-  return rows.map((f) => ({
+  if (!rows.length) {
+    rows = await tpGroupedByMonth(env, { from, to });
+    if (rows.length) note = "Nothing cached near your dates yet (few travellers have searched them) — showing the cheapest recently-seen fare for each upcoming month on this route.";
+  }
+  const offers = rows.map((f) => ({
     price: Number(f.price),
     currency: "USD",
     carriers: [carrierName(f.airline)],
@@ -158,6 +222,7 @@ async function tpFlights(env, { from, to, depart, ret }) {
     roundTrip: Boolean(ret),
     link: f.link ? `https://www.aviasales.com${f.link}` : null,
   })).sort((a, b) => a.price - b.price).slice(0, 10);
+  return { offers, note };
 }
 
 async function flights(request, url, env, ctx) {
@@ -175,19 +240,27 @@ async function flights(request, url, env, ctx) {
     // (stronger on low-cost carriers). One failing provider doesn't sink the other.
     const tasks = [];
     if (env.DUFFEL_API_KEY) {
-      tasks.push(duffelFlights(env, q).then((o) => o.map((x) => ({ ...x, source: "duffel" }))));
+      tasks.push(duffelFlights(env, q).then((o) => ({
+        offers: o.map((x) => ({ ...x, source: "duffel" })),
+        note: null,
+      })));
     }
     if (env.TRAVELPAYOUTS_TOKEN) {
-      tasks.push(tpFlights(env, q).then((o) => o.map((x) => ({ ...x, source: "aviasales" }))));
+      tasks.push(tpFlights(env, q).then(({ offers, note }) => ({
+        offers: offers.map((x) => ({ ...x, source: "aviasales" })),
+        note,
+      })));
     }
     if (!tasks.length) throw new Error("not_configured");
     const results = await Promise.allSettled(tasks);
-    const offers = results
-      .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
+    const fulfilled = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+    const offers = fulfilled
+      .flatMap((v) => v.offers)
       .sort((a, b) => a.price - b.price)
       .slice(0, 12);
-    if (!offers.length && results.every((r) => r.status === "rejected")) throw results[0].reason;
-    return { offers, fetchedAt: new Date().toISOString() };
+    if (!offers.length && !fulfilled.length) throw results[0].reason;
+    const note = fulfilled.map((v) => v.note).filter(Boolean).join(" ") || null;
+    return { offers, note, fetchedAt: new Date().toISOString() };
   });
 }
 
@@ -233,30 +306,43 @@ async function hotels(request, url, env, ctx) {
 
 export default {
   async fetch(request, env, ctx) {
-    if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
+    const cors = corsFor(request);
+    if (request.method === "OPTIONS") return new Response(null, { headers: cors });
+    if (rateLimited(request)) {
+      return new Response(JSON.stringify({ error: "rate_limited", hint: "Slow down a little — try again in a minute." }), {
+        status: 429,
+        headers: { "Content-Type": "application/json", ...cors },
+      });
+    }
     const url = new URL(request.url);
+    // Re-stamp CORS per request so cached responses work from any allowed origin.
+    const finalize = (res) => {
+      const headers = new Headers(res.headers);
+      for (const [k, v] of Object.entries(cors)) headers.set(k, v);
+      return new Response(res.body, { status: res.status, headers });
+    };
     try {
       if (url.pathname === "/api/health") {
         const flightsProvider = env.DUFFEL_API_KEY ? "duffel" : env.TRAVELPAYOUTS_TOKEN ? "travelpayouts" : null;
         const hotelsProvider = env.TRAVELPAYOUTS_TOKEN ? "travelpayouts" : null;
-        return json({
+        return finalize(json({
           ok: true,
           configured: Boolean(flightsProvider || hotelsProvider),
           providers: { flights: flightsProvider, hotels: hotelsProvider },
-        });
+        }));
       }
-      if (url.pathname === "/api/flights") return await flights(request, url, env, ctx);
-      if (url.pathname === "/api/hotels") return await hotels(request, url, env, ctx);
-      return json({ error: "not_found" }, 404);
+      if (url.pathname === "/api/flights") return finalize(await flights(request, url, env, ctx));
+      if (url.pathname === "/api/hotels") return finalize(await hotels(request, url, env, ctx));
+      return finalize(json({ error: "not_found" }, 404));
     } catch (e) {
       const msg = String(e.message || e);
       if (msg === "not_configured") {
-        return json({
+        return finalize(json({
           error: "not_configured",
           hint: "Set a provider token with `wrangler secret put TRAVELPAYOUTS_TOKEN` (or DUFFEL_API_KEY for flights).",
-        }, 503);
+        }, 503));
       }
-      return json({ error: "upstream", detail: msg.slice(0, 400) }, 502);
+      return finalize(json({ error: "upstream", detail: msg.slice(0, 400) }, 502));
     }
   },
 };

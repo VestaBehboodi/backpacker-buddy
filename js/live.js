@@ -3,10 +3,15 @@
    degrades gracefully back to the deep links when it's off or erroring. */
 "use strict";
 
+/* The site's own worker — visitors get live prices with no setup.
+   Forks: point this at your own deployment (see workers/README notes),
+   or clear it and use the footer panel per-browser. */
+const LIVE_DEFAULT_BASE = "https://backpacker-buddy-api.vesta-spenta.workers.dev";
+
 const LIVE = {
   base() {
-    try { return (localStorage.getItem("bb-live-api") || "").trim().replace(/\/+$/, ""); }
-    catch { return ""; }
+    try { return (localStorage.getItem("bb-live-api") || LIVE_DEFAULT_BASE).trim().replace(/\/+$/, ""); }
+    catch { return LIVE_DEFAULT_BASE; }
   },
   set(url) {
     try {
@@ -54,7 +59,7 @@ async function renderLiveFlights(container, { from, to, depart, ret }) {
   try {
     const params = { from, to, depart };
     if (ret) params["return"] = ret;
-    const { offers } = await liveFetch("/api/flights", params);
+    const { offers, note } = await liveFetch("/api/flights", params);
     if (seq !== flightSeq) return;
     if (!offers.length) {
       container.innerHTML = `<p class="live-note">⚡ No live fares came back for these dates — try the search links above.</p>`;
@@ -62,6 +67,7 @@ async function renderLiveFlights(container, { from, to, depart, ret }) {
     }
     container.innerHTML = `
       <h4 class="live-title">⚡ Live fares right now ${offers[0].roundTrip ? "(round-trip)" : "(one-way)"}</h4>
+      ${note ? `<p class="live-note">🗓️ ${note}</p>` : ""}
       <ul class="offer-list">
         ${offers.slice(0, 6).map((o) => {
           const when = `${fmtDay(o.departAt)} ${fmtTime(o.departAt)}${o.arriveAt ? " → " + fmtTime(o.arriveAt) : ""}`.trim();
@@ -70,6 +76,12 @@ async function renderLiveFlights(container, { from, to, depart, ret }) {
           const badge = o.source
             ? `<span class="offer-source ${o.source === "duffel" ? "offer-source-live" : "offer-source-cached"}">${o.source === "duffel" ? "live" : "recent"}</span>`
             : "";
+          // Offers without a direct booking URL (live/Duffel ones) get a
+          // Google Flights search for that exact route and date instead.
+          const gq = `Flights from ${from} to ${to} on ${(o.departAt || depart).slice(0, 10)}${o.roundTrip ? "" : " one way"}`;
+          const bookBtn = o.link
+            ? `<a class="btn btn-go offer-book" href="${o.link}" target="_blank" rel="noopener">Book ↗</a>`
+            : `<a class="btn btn-go offer-book" href="https://www.google.com/travel/flights?q=${encodeURIComponent(gq)}" target="_blank" rel="noopener" title="Find this flight on Google Flights to book it">Find ↗</a>`;
           return `
           <li class="offer-row">
             <span class="offer-price">${fmt(o.price)}</span>
@@ -77,7 +89,7 @@ async function renderLiveFlights(container, { from, to, depart, ret }) {
               <strong>${o.carriers.join(" + ")} ${badge}</strong>
               <span class="offer-sub">${sub}</span>
             </span>
-            ${o.link ? `<a class="btn btn-go offer-book" href="${o.link}" target="_blank" rel="noopener">Book ↗</a>` : ""}
+            ${bookBtn}
           </li>`;
         }).join("")}
       </ul>
@@ -128,7 +140,8 @@ function initLiveSetup() {
     const url = input.value.trim().replace(/\/+$/, "");
     if (!url) {
       LIVE.set("");
-      status.textContent = "Live prices turned off.";
+      status.textContent = "Reset to the site's built-in live prices.";
+      input.value = LIVE.base();
       refresh();
       renderFlightResult();
       renderStayResult();
