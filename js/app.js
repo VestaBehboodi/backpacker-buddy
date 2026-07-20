@@ -607,6 +607,19 @@ document.addEventListener("DOMContentLoaded", () => {
     renderCustomRoute();
   });
 
+  // Deep links from the static guide pages: ?from=LAX&to=SYD and ?city=Bangkok
+  const qp = new URLSearchParams(location.search);
+  const codeToValue = (v) => {
+    const hit = resolveCity(v);
+    return hit && hit.code ? `${hit.name} (${hit.code})` : v;
+  };
+  if (qp.get("from")) $("#fly-from").value = codeToValue(qp.get("from"));
+  if (qp.get("to")) $("#fly-to").value = codeToValue(qp.get("to"));
+  if (qp.get("city")) {
+    $("#stay-city").value = qp.get("city");
+    $('[data-panel="panel-stays"]').click();
+  }
+
   renderFlightResult();
   renderStayResult();
 });
