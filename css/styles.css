@@ -271,6 +271,10 @@ ol.legs li .leg-desc { flex: 1; }
 .season-off { background: var(--warn); color: var(--accent-dark); border: 1px solid var(--accent); }
 .season-neutral { background: transparent; color: var(--ink-soft); border: 1px solid var(--line); }
 
+.route-toolbar { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin: 0.2rem 0 0.6rem; }
+.route-toolbar .share-trip { font-size: 0.9rem; }
+.save-note { font-size: 0.8rem; color: var(--ink-soft); }
+
 .classic-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
 .classic-header h3 { margin: 0; }
 .classic-header .field { min-width: 220px; }

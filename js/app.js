@@ -484,7 +484,59 @@ function goToStays(city) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+/* ---- shareable & saved trips ---- */
+function currentTrip() {
+  return {
+    countries: selectedCountries.slice(),
+    origin: $("#builder-origin").value,
+    months: $("#route-months").value,
+    style: $("#route-style").value,
+    budget: $("#route-budget").value,
+    start: $("#route-start-month").value,
+  };
+}
+function shareURL() {
+  const t = currentTrip();
+  const p = new URLSearchParams();
+  p.set("countries", t.countries.join(","));
+  p.set("origin", t.origin);
+  p.set("months", t.months);
+  p.set("style", t.style);
+  if (t.budget) p.set("budget", t.budget);
+  p.set("start", t.start);
+  return location.origin + location.pathname + "?" + p.toString();
+}
+function saveTrip() {
+  try { localStorage.setItem("bb-trip", JSON.stringify(currentTrip())); } catch { /* private mode */ }
+}
+function applyTrip(t) {
+  if (!t) return false;
+  const valid = (t.countries || []).filter((c) => COUNTRIES[c]);
+  selectedCountries.length = 0;
+  valid.forEach((c) => selectedCountries.push(c));
+  const setIf = (sel, v) => { if (v != null && v !== "") $(sel).value = v; };
+  if (t.origin != null && $(`#builder-origin option[value="${t.origin}"]`)) $("#builder-origin").value = t.origin;
+  setIf("#route-months", t.months);
+  setIf("#route-style", t.style);
+  setIf("#route-budget", t.budget);
+  setIf("#route-start-month", t.start);
+  renderChips();
+  return valid.length > 0;
+}
+async function copyShare(btn) {
+  const url = shareURL();
+  try {
+    await navigator.clipboard.writeText(url);
+    btn.textContent = "✅ Link copied!";
+  } catch {
+    window.prompt("Copy your trip link:", url);
+    btn.textContent = "🔗 Copy share link";
+  }
+  setTimeout(() => { btn.textContent = "🔗 Copy share link"; }, 2500);
+}
+
 function renderCustomRoute() {
+  saveTrip();
   const out = $("#custom-route-result");
   if (!selectedCountries.length) { out.innerHTML = ""; return; }
 
@@ -593,6 +645,10 @@ function renderCustomRoute() {
       <div class="best-badge">🧭 Your custom route — ${ordered.length} countr${ordered.length === 1 ? "y" : "ies"}, ${months} month${months === 1 ? "" : "s"}</div>
       <h3>${origin.name.split(",")[0]} → ${ordered.map((n) => n).join(" → ")} → home</h3>
       <p class="tagline">Ordered to minimise backtracking from ${origin.name.split(",")[0]}. Same-region neighbours go overland; everything else flies.</p>
+      <div class="route-toolbar">
+        <button type="button" class="btn btn-go share-trip">🔗 Copy share link</button>
+        <span class="save-note">💾 saved on this device automatically</span>
+      </div>
       <ol class="legs">${itinerary}</ol>
       <div class="route-totals">
         <div><span class="price-label">Transport total (${legs.length} legs)</span><span class="price-big">${fmt(transport)}</span></div>
@@ -669,8 +725,10 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#route-budget").addEventListener("input", rerenderAllRoutes);
   $("#route-start-month").addEventListener("change", renderCustomRoute);
 
-  // Jump from a route leg/stop into the live Flights / Stays tabs.
+  // Jump from a route leg/stop into the live Flights / Stays tabs, or share.
   $("#custom-route-result").addEventListener("click", (e) => {
+    const share = e.target.closest(".share-trip");
+    if (share) { copyShare(share); return; }
     const btn = e.target.closest(".route-jump");
     if (!btn) return;
     if (btn.dataset.jump === "flight") goToFlights(btn.dataset.from, btn.dataset.to);
@@ -709,6 +767,25 @@ document.addEventListener("DOMContentLoaded", () => {
     $('[data-panel="panel-stays"]').click();
   }
 
+  // Restore a shared trip from the URL, else the last one saved on this device.
+  let restored = false;
+  if (qp.get("countries")) {
+    restored = applyTrip({
+      countries: qp.get("countries").split(",").map((s) => s.trim()).filter(Boolean),
+      origin: qp.get("origin"), months: qp.get("months"), style: qp.get("style"),
+      budget: qp.get("budget"), start: qp.get("start"),
+    });
+    if (restored) $('[data-panel="panel-routes"]').click();
+  }
+  if (!restored && !qp.get("from") && !qp.get("to") && !qp.get("city")) {
+    try {
+      const saved = JSON.parse(localStorage.getItem("bb-trip") || "null");
+      if (saved) restored = applyTrip(saved);
+    } catch { /* ignore */ }
+  }
+
   renderFlightResult();
   renderStayResult();
+  renderRoutes();
+  renderCustomRoute();
 });
