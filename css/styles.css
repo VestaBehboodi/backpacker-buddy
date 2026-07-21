@@ -249,6 +249,27 @@ input[type="range"] { accent-color: var(--brand); padding: 0; }
 .builder-error { color: var(--accent-dark); font-weight: 600; font-size: 0.9rem; margin: 0.4rem 0 0; min-height: 1em; }
 
 ol.legs li.stay-line { background: var(--bg); border-radius: 8px; padding: 0.45rem 0.6rem; border-bottom: none; }
+ol.legs li { align-items: center; }
+ol.legs li .leg-desc { flex: 1; }
+.route-jump {
+  flex: 0 0 auto;
+  font-size: 0.82rem;
+  padding: 0.4rem 0.7rem;
+  white-space: nowrap;
+  align-self: center;
+}
+.season-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  margin-left: 0.35rem;
+  white-space: nowrap;
+}
+.season-in { background: var(--good); color: var(--brand-dark); border: 1px solid var(--brand); }
+.season-off { background: var(--warn); color: var(--accent-dark); border: 1px solid var(--accent); }
+.season-neutral { background: transparent; color: var(--ink-soft); border: 1px solid var(--line); }
 
 .classic-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
 .classic-header h3 { margin: 0; }
