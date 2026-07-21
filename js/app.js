@@ -631,10 +631,12 @@ function renderCustomRoute() {
         : `<span class="season-badge season-off">🌧️ ${MON[vm - 1]}: off-season (ideal ${bestLabel})</span>`;
     }
     const stayCity = c.gateway.split(" (")[0];
+    const intel = (c.visa || c.highlight || c.tip) ? `
+        <br><span class="stop-intel">${c.visa ? `🛂 ${c.visa}` : ""}${c.highlight ? ` · ⭐ Don't miss: ${c.highlight}` : ""}${c.tip ? ` · ⚠️ ${c.tip}` : ""}</span>` : "";
     const stayLine = `
       <li class="stay-line">
         <span class="leg-mode">📍</span>
-        <span class="leg-desc"><strong>${ordered[stopIdx]}</strong> — ${alloc[stopIdx]} days · ~${fmt(alloc[stopIdx] * c.daily[styleIdx])} on the ground (${fmt(c.daily[styleIdx])}/day ${style}) ${seasonBadge}</span>
+        <span class="leg-desc"><strong>${ordered[stopIdx]}</strong> — ${alloc[stopIdx]} days · ~${fmt(alloc[stopIdx] * c.daily[styleIdx])} on the ground (${fmt(c.daily[styleIdx])}/day ${style}) ${seasonBadge}${intel}</span>
         <button type="button" class="btn btn-go route-jump" data-jump="stay" data-city="${stayCity}">🛏️ Find stays →</button>
       </li>`;
     return legLine + stayLine;
@@ -658,7 +660,7 @@ function renderCustomRoute() {
       ${seasonNote}
       ${fitBadge}
       ${paceWarning}
-      <p class="fine-print">Tap <strong>Live fares</strong> or <strong>Find stays</strong> on any leg to price it for real. Fare estimates come from a distance + regional-budget-carrier model; daily costs cover a ${style} bed, food, local transport and fun. Season windows are typical dry/pleasant months.</p>
+      <p class="fine-print">Tap <strong>Live fares</strong> or <strong>Find stays</strong> on any leg to price it for real. Fare estimates come from a distance + regional-budget-carrier model; daily costs cover a ${style} bed, food, local transport and fun. Season windows are typical dry/pleasant months; visa notes assume a US passport — always confirm for your nationality.</p>
     </div>`;
 }
 
