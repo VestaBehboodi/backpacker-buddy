@@ -484,7 +484,59 @@ function goToStays(city) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+/* ---- shareable & saved trips ---- */
+function currentTrip() {
+  return {
+    countries: selectedCountries.slice(),
+    origin: $("#builder-origin").value,
+    months: $("#route-months").value,
+    style: $("#route-style").value,
+    budget: $("#route-budget").value,
+    start: $("#route-start-month").value,
+  };
+}
+function shareURL() {
+  const t = currentTrip();
+  const p = new URLSearchParams();
+  p.set("countries", t.countries.join(","));
+  p.set("origin", t.origin);
+  p.set("months", t.months);
+  p.set("style", t.style);
+  if (t.budget) p.set("budget", t.budget);
+  p.set("start", t.start);
+  return location.origin + location.pathname + "?" + p.toString();
+}
+function saveTrip() {
+  try { localStorage.setItem("bb-trip", JSON.stringify(currentTrip())); } catch { /* private mode */ }
+}
+function applyTrip(t) {
+  if (!t) return false;
+  const valid = (t.countries || []).filter((c) => COUNTRIES[c]);
+  selectedCountries.length = 0;
+  valid.forEach((c) => selectedCountries.push(c));
+  const setIf = (sel, v) => { if (v != null && v !== "") $(sel).value = v; };
+  if (t.origin != null && $(`#builder-origin option[value="${t.origin}"]`)) $("#builder-origin").value = t.origin;
+  setIf("#route-months", t.months);
+  setIf("#route-style", t.style);
+  setIf("#route-budget", t.budget);
+  setIf("#route-start-month", t.start);
+  renderChips();
+  return valid.length > 0;
+}
+async function copyShare(btn) {
+  const url = shareURL();
+  try {
+    await navigator.clipboard.writeText(url);
+    btn.textContent = "✅ Link copied!";
+  } catch {
+    window.prompt("Copy your trip link:", url);
+    btn.textContent = "🔗 Copy share link";
+  }
+  setTimeout(() => { btn.textContent = "🔗 Copy share link"; }, 2500);
+}
+
 function renderCustomRoute() {
+  saveTrip();
   const out = $("#custom-route-result");
   if (!selectedCountries.length) { out.innerHTML = ""; return; }
 
@@ -579,10 +631,12 @@ function renderCustomRoute() {
         : `<span class="season-badge season-off">🌧️ ${MON[vm - 1]}: off-season (ideal ${bestLabel})</span>`;
     }
     const stayCity = c.gateway.split(" (")[0];
+    const intel = (c.visa || c.highlight || c.tip) ? `
+        <br><span class="stop-intel">${c.visa ? `🛂 ${c.visa}` : ""}${c.highlight ? ` · ⭐ Don't miss: ${c.highlight}` : ""}${c.tip ? ` · ⚠️ ${c.tip}` : ""}</span>` : "";
     const stayLine = `
       <li class="stay-line">
         <span class="leg-mode">📍</span>
-        <span class="leg-desc"><strong>${ordered[stopIdx]}</strong> — ${alloc[stopIdx]} days · ~${fmt(alloc[stopIdx] * c.daily[styleIdx])} on the ground (${fmt(c.daily[styleIdx])}/day ${style}) ${seasonBadge}</span>
+        <span class="leg-desc"><strong>${ordered[stopIdx]}</strong> — ${alloc[stopIdx]} days · ~${fmt(alloc[stopIdx] * c.daily[styleIdx])} on the ground (${fmt(c.daily[styleIdx])}/day ${style}) ${seasonBadge}${intel}</span>
         <button type="button" class="btn btn-go route-jump" data-jump="stay" data-city="${stayCity}">🛏️ Find stays →</button>
       </li>`;
     return legLine + stayLine;
@@ -593,6 +647,10 @@ function renderCustomRoute() {
       <div class="best-badge">🧭 Your custom route — ${ordered.length} countr${ordered.length === 1 ? "y" : "ies"}, ${months} month${months === 1 ? "" : "s"}</div>
       <h3>${origin.name.split(",")[0]} → ${ordered.map((n) => n).join(" → ")} → home</h3>
       <p class="tagline">Ordered to minimise backtracking from ${origin.name.split(",")[0]}. Same-region neighbours go overland; everything else flies.</p>
+      <div class="route-toolbar">
+        <button type="button" class="btn btn-go share-trip">🔗 Copy share link</button>
+        <span class="save-note">💾 saved on this device automatically</span>
+      </div>
       <ol class="legs">${itinerary}</ol>
       <div class="route-totals">
         <div><span class="price-label">Transport total (${legs.length} legs)</span><span class="price-big">${fmt(transport)}</span></div>
@@ -602,7 +660,7 @@ function renderCustomRoute() {
       ${seasonNote}
       ${fitBadge}
       ${paceWarning}
-      <p class="fine-print">Tap <strong>Live fares</strong> or <strong>Find stays</strong> on any leg to price it for real. Fare estimates come from a distance + regional-budget-carrier model; daily costs cover a ${style} bed, food, local transport and fun. Season windows are typical dry/pleasant months.</p>
+      <p class="fine-print">Tap <strong>Live fares</strong> or <strong>Find stays</strong> on any leg to price it for real. Fare estimates come from a distance + regional-budget-carrier model; daily costs cover a ${style} bed, food, local transport and fun. Season windows are typical dry/pleasant months; visa notes assume a US passport — always confirm for your nationality.</p>
     </div>`;
 }
 
@@ -633,14 +691,68 @@ function renderHacks() {
     </div>`).join("");
 }
 
+/* ---------- deal-hacks toolkit ---------- */
+function renderRegionTool() {
+  const r = $("#tool-region").value;
+  $("#tool-region-out").innerHTML = `💡 ${REGION_TIPS[r] || REGION_TIPS.restofworld}`;
+}
+function renderBagTool() {
+  const flights = Math.max(0, parseInt($("#tool-flights").value, 10) || 0);
+  const fee = parseInt($("#tool-bagfee").value, 10) || 0;
+  const saved = flights * fee;
+  $("#tool-bag-out").innerHTML = flights
+    ? `Packing carry-on only saves <strong>${fmt(saved)}</strong> across ${flights} flight${flights === 1 ? "" : "s"} — that's ${saved >= 40 ? Math.floor(saved / 12) + "+ nights in a SEA dorm" : "real money"} back in your pocket. A 40L pack under 7kg flies free on AirAsia, VietJet, Scoot and Jetstar.`
+    : "Enter how many budget-airline flights your trip has.";
+}
+function populateCompareTool() {
+  const names = Object.keys(COUNTRIES).sort();
+  ["#tool-country-a", "#tool-country-b"].forEach((sel, idx) => {
+    const el = $(sel);
+    names.forEach((n) => {
+      const o = document.createElement("option");
+      o.value = n; o.textContent = n;
+      el.appendChild(o);
+    });
+    el.value = idx === 0 ? "Thailand" : "Japan";
+  });
+}
+function renderCompareTool() {
+  const a = COUNTRIES[$("#tool-country-a").value];
+  const b = COUNTRIES[$("#tool-country-b").value];
+  const days = Math.max(1, parseInt($("#tool-days").value, 10) || 1);
+  if (!a || !b) return;
+  const na = $("#tool-country-a").value, nb = $("#tool-country-b").value;
+  const row = (label, av, bv) => {
+    const cheaper = av === bv ? "" : av < bv ? "a" : "b";
+    return `<tr>
+      <td>${label}</td>
+      <td class="num ${cheaper === "a" ? "win" : ""}">${fmt(av)}/day</td>
+      <td class="num ${cheaper === "b" ? "win" : ""}">${fmt(bv)}/day</td>
+    </tr>`;
+  };
+  const diffShoe = Math.abs(a.daily[0] - b.daily[0]) * days;
+  const cheaperName = a.daily[0] <= b.daily[0] ? na : nb;
+  $("#tool-compare-out").innerHTML = `
+    <table class="price-table compare-table">
+      <tr><th></th><th class="num">${na}</th><th class="num">${nb}</th></tr>
+      ${row("🎒 Shoestring", a.daily[0], b.daily[0])}
+      ${row("🧳 Flashpacker", a.daily[1], b.daily[1])}
+    </table>
+    <p>Over ${days} days shoestring, <strong>${cheaperName}</strong> saves you about <strong>${fmt(diffShoe)}</strong>.</p>`;
+}
+
 /* ---------- init ---------- */
 document.addEventListener("DOMContentLoaded", () => {
   initTabs();
   populateCityDatalist();
   populateStayDatalist();
   populateBuilderInputs();
+  populateCompareTool();
   initLiveSetup();
   renderHacks();
+  renderRegionTool();
+  renderBagTool();
+  renderCompareTool();
   renderRoutes();
 
   // sensible default dates: ~2 months out, 1-week stay
@@ -669,8 +781,17 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#route-budget").addEventListener("input", rerenderAllRoutes);
   $("#route-start-month").addEventListener("change", renderCustomRoute);
 
-  // Jump from a route leg/stop into the live Flights / Stays tabs.
+  $("#tool-region").addEventListener("change", renderRegionTool);
+  $("#tool-flights").addEventListener("input", renderBagTool);
+  $("#tool-bagfee").addEventListener("change", renderBagTool);
+  ["#tool-country-a", "#tool-country-b", "#tool-days"].forEach((s) =>
+    $(s).addEventListener("change", renderCompareTool));
+  $("#tool-days").addEventListener("input", renderCompareTool);
+
+  // Jump from a route leg/stop into the live Flights / Stays tabs, or share.
   $("#custom-route-result").addEventListener("click", (e) => {
+    const share = e.target.closest(".share-trip");
+    if (share) { copyShare(share); return; }
     const btn = e.target.closest(".route-jump");
     if (!btn) return;
     if (btn.dataset.jump === "flight") goToFlights(btn.dataset.from, btn.dataset.to);
@@ -709,6 +830,25 @@ document.addEventListener("DOMContentLoaded", () => {
     $('[data-panel="panel-stays"]').click();
   }
 
+  // Restore a shared trip from the URL, else the last one saved on this device.
+  let restored = false;
+  if (qp.get("countries")) {
+    restored = applyTrip({
+      countries: qp.get("countries").split(",").map((s) => s.trim()).filter(Boolean),
+      origin: qp.get("origin"), months: qp.get("months"), style: qp.get("style"),
+      budget: qp.get("budget"), start: qp.get("start"),
+    });
+    if (restored) $('[data-panel="panel-routes"]').click();
+  }
+  if (!restored && !qp.get("from") && !qp.get("to") && !qp.get("city")) {
+    try {
+      const saved = JSON.parse(localStorage.getItem("bb-trip") || "null");
+      if (saved) restored = applyTrip(saved);
+    } catch { /* ignore */ }
+  }
+
   renderFlightResult();
   renderStayResult();
+  renderRoutes();
+  renderCustomRoute();
 });
