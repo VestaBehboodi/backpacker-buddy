@@ -535,6 +535,47 @@ async function copyShare(btn) {
   setTimeout(() => { btn.textContent = "🔗 Copy share link"; }, 2500);
 }
 
+/* ---- named saved routes (multiple, kept on this device) ---- */
+function getSavedRoutes() {
+  try { return JSON.parse(localStorage.getItem("bb-saved-routes") || "[]"); }
+  catch { return []; }
+}
+function setSavedRoutes(list) {
+  try { localStorage.setItem("bb-saved-routes", JSON.stringify(list)); } catch { /* private mode */ }
+}
+function saveNamedRoute() {
+  if (!selectedCountries.length) return;
+  const suggested = selectedCountries.join(" · ");
+  const name = (window.prompt("Name this route:", suggested) || "").trim();
+  if (!name) return;
+  const list = getSavedRoutes();
+  list.unshift({ id: Date.now().toString(36), name, trip: currentTrip() });
+  setSavedRoutes(list.slice(0, 20));
+  renderSavedRoutes();
+}
+function renderSavedRoutes() {
+  const list = getSavedRoutes();
+  const el = $("#saved-routes");
+  if (!list.length) { el.innerHTML = ""; return; }
+  el.innerHTML = `<span class="saved-label">💾 Saved routes</span>` +
+    list.map((r) => `<span class="saved-chip" data-id="${r.id}">
+      <button type="button" class="saved-load" data-id="${r.id}">${r.name}</button>
+      <button type="button" class="saved-del" data-id="${r.id}" title="Delete" aria-label="Delete ${r.name}">✕</button>
+    </span>`).join("");
+}
+function loadSavedRoute(id) {
+  const r = getSavedRoutes().find((x) => x.id === id);
+  if (!r) return;
+  applyTrip(r.trip);
+  renderRoutes();
+  renderCustomRoute();
+  $("#custom-route-result").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function deleteSavedRoute(id) {
+  setSavedRoutes(getSavedRoutes().filter((x) => x.id !== id));
+  renderSavedRoutes();
+}
+
 function renderCustomRoute() {
   saveTrip();
   const out = $("#custom-route-result");
@@ -648,8 +689,8 @@ function renderCustomRoute() {
       <h3>${origin.name.split(",")[0]} → ${ordered.map((n) => n).join(" → ")} → home</h3>
       <p class="tagline">Ordered to minimise backtracking from ${origin.name.split(",")[0]}. Same-region neighbours go overland; everything else flies.</p>
       <div class="route-toolbar">
+        <button type="button" class="btn btn-go save-trip">💾 Save this route</button>
         <button type="button" class="btn btn-go share-trip">🔗 Copy share link</button>
-        <span class="save-note">💾 saved on this device automatically</span>
       </div>
       <ol class="legs">${itinerary}</ol>
       <div class="route-totals">
@@ -788,14 +829,35 @@ document.addEventListener("DOMContentLoaded", () => {
     $(s).addEventListener("change", renderCompareTool));
   $("#tool-days").addEventListener("input", renderCompareTool);
 
-  // Jump from a route leg/stop into the live Flights / Stays tabs, or share.
+  // Jump from a route leg/stop into the live Flights / Stays tabs, share, or save.
   $("#custom-route-result").addEventListener("click", (e) => {
-    const share = e.target.closest(".share-trip");
-    if (share) { copyShare(share); return; }
+    if (e.target.closest(".share-trip")) { copyShare(e.target.closest(".share-trip")); return; }
+    if (e.target.closest(".save-trip")) { saveNamedRoute(); return; }
     const btn = e.target.closest(".route-jump");
     if (!btn) return;
     if (btn.dataset.jump === "flight") goToFlights(btn.dataset.from, btn.dataset.to);
     else goToStays(btn.dataset.city);
+  });
+
+  // Saved-route list: load or delete.
+  $("#saved-routes").addEventListener("click", (e) => {
+    const load = e.target.closest(".saved-load");
+    const del = e.target.closest(".saved-del");
+    if (load) loadSavedRoute(load.dataset.id);
+    else if (del) deleteSavedRoute(del.dataset.id);
+  });
+  renderSavedRoutes();
+
+  // Classic routes stay hidden until asked for.
+  $("#classic-toggle").addEventListener("click", () => {
+    const wrap = $("#classic-wrap");
+    const open = wrap.hasAttribute("hidden");
+    if (open) { wrap.removeAttribute("hidden"); renderRoutes(); }
+    else wrap.setAttribute("hidden", "");
+    $("#classic-toggle").setAttribute("aria-expanded", String(open));
+    $("#classic-toggle").innerHTML = open
+      ? "🗺️ Hide classic routes"
+      : "🗺️ Need inspiration? Browse 6 classic backpacker routes";
   });
 
   $("#builder-add").addEventListener("click", addCountry);

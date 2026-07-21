@@ -3,13 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <title>Backpacker Buddy — your personal budget travel agent</title>
   <meta name="description" content="Plan a budget backpacking trip like a pro: live flight deals, clean cheap stays, money-saving route plans, and flexible-booking tricks — built for backpackers.">
   <meta property="og:title" content="Backpacker Buddy — your personal budget travel agent">
   <meta property="og:description" content="Live flight deals, clean cheap stays, money-saving route plans, and flexible-booking tricks — built for backpackers.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://backpackerbuddy.app/">
-  <meta name="theme-color" content="#0e7c66">
+  <meta name="theme-color" content="#0f6b5f">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎒</text></svg>">
   <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -95,7 +97,7 @@
     <section id="panel-routes" class="panel">
       <div class="card">
         <h3>Your trip</h3>
-        <p>Set the basics once — the custom route builder and the classic routes below both use them.</p>
+        <p>Set the basics once, then build your route below.</p>
         <div class="controls-row">
           <div class="field">
             <label for="route-months">Trip length: <span id="route-months-label" class="range-value">4 months</span></label>
@@ -153,23 +155,29 @@
         </div>
         <p id="builder-error" class="builder-error" aria-live="polite"></p>
         <div id="builder-chips" class="chips"></div>
+        <div id="saved-routes" class="saved-routes"></div>
       </div>
       <div id="custom-route-result"></div>
 
-      <div class="card classic-header">
-        <h3>Or steal a classic route</h3>
-        <div class="field">
-          <label for="route-region">Where to?</label>
-          <select id="route-region">
-            <option value="all">Show me everything</option>
-            <option value="apac">Australia + Southeast Asia</option>
-            <option value="latam">Latin America</option>
-            <option value="southasia">South Asia</option>
-            <option value="europe">Europe</option>
-          </select>
+      <button type="button" id="classic-toggle" class="btn btn-outline classic-toggle" aria-expanded="false">
+        🗺️ Need inspiration? Browse 6 classic backpacker routes
+      </button>
+      <div id="classic-wrap" class="classic-wrap" hidden>
+        <div class="card classic-header">
+          <h3>Classic routes</h3>
+          <div class="field">
+            <label for="route-region">Where to?</label>
+            <select id="route-region">
+              <option value="all">Show me everything</option>
+              <option value="apac">Australia + Southeast Asia</option>
+              <option value="latam">Latin America</option>
+              <option value="southasia">South Asia</option>
+              <option value="europe">Europe</option>
+            </select>
+          </div>
         </div>
+        <div id="route-results"></div>
       </div>
-      <div id="route-results"></div>
     </section>
 
     <!-- HACKS -->

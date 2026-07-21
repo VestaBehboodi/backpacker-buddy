@@ -69,7 +69,9 @@ function page({ depth, title, description, canonicalPath, body }) {
   <meta property="og:description" content="${esc(description)}">
   <meta property="og:type" content="article">
   <meta property="og:url" content="${SITE_BASE}/${canonicalPath}">
-  <meta name="theme-color" content="#0e7c66">
+  <meta name="theme-color" content="#0f6b5f">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎒</text></svg>">
   <link rel="stylesheet" href="${rel}css/styles.css">
   <style>
