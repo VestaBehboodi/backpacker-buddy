@@ -271,9 +271,24 @@ ol.legs li .leg-desc { flex: 1; }
 .season-off { background: var(--warn); color: var(--accent-dark); border: 1px solid var(--accent); }
 .season-neutral { background: transparent; color: var(--ink-soft); border: 1px solid var(--line); }
 
-.route-toolbar { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin: 0.2rem 0 0.6rem; }
-.route-toolbar .share-trip { font-size: 0.9rem; }
+.route-toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin: 0.2rem 0 0.6rem; }
+.route-toolbar .btn { font-size: 0.9rem; }
 .save-note { font-size: 0.8rem; color: var(--ink-soft); }
+
+.btn-outline { background: transparent; border: 1px solid var(--brand); color: var(--brand); }
+.btn-outline:hover { background: var(--brand); color: #fff; }
+
+.classic-toggle { display: block; width: 100%; margin: 0.4rem 0 1rem; padding: 0.85rem 1rem; font-size: 0.98rem; }
+.classic-wrap { animation: fadein 0.25s ease; }
+
+.saved-routes { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.9rem; }
+.saved-label { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); }
+.saved-chip { display: inline-flex; align-items: stretch; border: 1px solid var(--brand); border-radius: 999px; overflow: hidden; background: var(--good); }
+.saved-chip .saved-load { font: inherit; font-size: 0.9rem; font-weight: 700; color: var(--brand-dark); background: transparent; border: none; padding: 0.35rem 0.4rem 0.35rem 0.85rem; cursor: pointer; }
+.saved-chip .saved-del { font: inherit; font-size: 0.8rem; color: var(--brand-dark); background: transparent; border: none; padding: 0 0.6rem 0 0.35rem; cursor: pointer; opacity: 0.6; }
+.saved-chip:hover { background: var(--warn); border-color: var(--accent); }
+.saved-chip:hover .saved-load, .saved-chip:hover .saved-del { color: var(--accent-dark); }
+.saved-chip .saved-del:hover { opacity: 1; }
 .stop-intel { font-size: 0.82rem; color: var(--ink-soft); display: inline-block; margin-top: 0.15rem; line-height: 1.45; }
 
 .tool { border-top: 1px solid var(--line); padding-top: 1rem; margin-top: 1rem; }
