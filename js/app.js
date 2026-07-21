@@ -691,14 +691,68 @@ function renderHacks() {
     </div>`).join("");
 }
 
+/* ---------- deal-hacks toolkit ---------- */
+function renderRegionTool() {
+  const r = $("#tool-region").value;
+  $("#tool-region-out").innerHTML = `💡 ${REGION_TIPS[r] || REGION_TIPS.restofworld}`;
+}
+function renderBagTool() {
+  const flights = Math.max(0, parseInt($("#tool-flights").value, 10) || 0);
+  const fee = parseInt($("#tool-bagfee").value, 10) || 0;
+  const saved = flights * fee;
+  $("#tool-bag-out").innerHTML = flights
+    ? `Packing carry-on only saves <strong>${fmt(saved)}</strong> across ${flights} flight${flights === 1 ? "" : "s"} — that's ${saved >= 40 ? Math.floor(saved / 12) + "+ nights in a SEA dorm" : "real money"} back in your pocket. A 40L pack under 7kg flies free on AirAsia, VietJet, Scoot and Jetstar.`
+    : "Enter how many budget-airline flights your trip has.";
+}
+function populateCompareTool() {
+  const names = Object.keys(COUNTRIES).sort();
+  ["#tool-country-a", "#tool-country-b"].forEach((sel, idx) => {
+    const el = $(sel);
+    names.forEach((n) => {
+      const o = document.createElement("option");
+      o.value = n; o.textContent = n;
+      el.appendChild(o);
+    });
+    el.value = idx === 0 ? "Thailand" : "Japan";
+  });
+}
+function renderCompareTool() {
+  const a = COUNTRIES[$("#tool-country-a").value];
+  const b = COUNTRIES[$("#tool-country-b").value];
+  const days = Math.max(1, parseInt($("#tool-days").value, 10) || 1);
+  if (!a || !b) return;
+  const na = $("#tool-country-a").value, nb = $("#tool-country-b").value;
+  const row = (label, av, bv) => {
+    const cheaper = av === bv ? "" : av < bv ? "a" : "b";
+    return `<tr>
+      <td>${label}</td>
+      <td class="num ${cheaper === "a" ? "win" : ""}">${fmt(av)}/day</td>
+      <td class="num ${cheaper === "b" ? "win" : ""}">${fmt(bv)}/day</td>
+    </tr>`;
+  };
+  const diffShoe = Math.abs(a.daily[0] - b.daily[0]) * days;
+  const cheaperName = a.daily[0] <= b.daily[0] ? na : nb;
+  $("#tool-compare-out").innerHTML = `
+    <table class="price-table compare-table">
+      <tr><th></th><th class="num">${na}</th><th class="num">${nb}</th></tr>
+      ${row("🎒 Shoestring", a.daily[0], b.daily[0])}
+      ${row("🧳 Flashpacker", a.daily[1], b.daily[1])}
+    </table>
+    <p>Over ${days} days shoestring, <strong>${cheaperName}</strong> saves you about <strong>${fmt(diffShoe)}</strong>.</p>`;
+}
+
 /* ---------- init ---------- */
 document.addEventListener("DOMContentLoaded", () => {
   initTabs();
   populateCityDatalist();
   populateStayDatalist();
   populateBuilderInputs();
+  populateCompareTool();
   initLiveSetup();
   renderHacks();
+  renderRegionTool();
+  renderBagTool();
+  renderCompareTool();
   renderRoutes();
 
   // sensible default dates: ~2 months out, 1-week stay
@@ -726,6 +780,13 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#route-region").addEventListener("change", renderRoutes);
   $("#route-budget").addEventListener("input", rerenderAllRoutes);
   $("#route-start-month").addEventListener("change", renderCustomRoute);
+
+  $("#tool-region").addEventListener("change", renderRegionTool);
+  $("#tool-flights").addEventListener("input", renderBagTool);
+  $("#tool-bagfee").addEventListener("change", renderBagTool);
+  ["#tool-country-a", "#tool-country-b", "#tool-days"].forEach((s) =>
+    $(s).addEventListener("change", renderCompareTool));
+  $("#tool-days").addEventListener("input", renderCompareTool);
 
   // Jump from a route leg/stop into the live Flights / Stays tabs, or share.
   $("#custom-route-result").addEventListener("click", (e) => {
