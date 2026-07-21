@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - claude/budget-travel-chrome-extension-kdte3h
   workflow_dispatch:
 
 permissions:
