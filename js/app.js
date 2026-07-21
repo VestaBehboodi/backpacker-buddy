@@ -436,6 +436,54 @@ function renderChips() {
   ).join("");
 }
 
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MON_FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/* [11,12,1,2,3] -> "Nov–Mar"; handles wraparound and split ranges. */
+function formatMonths(arr) {
+  const set = new Set(arr);
+  if (set.size >= 12) return "year-round";
+  if (!set.size) return "";
+  let start = 0;
+  while (set.has((start % 12) + 1)) start++; // first absent month, so runs don't wrap
+  const runs = [];
+  let cur = null;
+  for (let k = 1; k <= 12; k++) {
+    const m = ((start + k - 1) % 12) + 1;
+    if (set.has(m)) { if (!cur) cur = [m, m]; else cur[1] = m; }
+    else if (cur) { runs.push(cur); cur = null; }
+  }
+  if (cur) runs.push(cur);
+  return runs.map(([a, b]) => (a === b ? MON[a - 1] : `${MON[a - 1]}–${MON[b - 1]}`)).join(", ");
+}
+
+/* Airport code for a route point (origin has .code; a country has it in gateway). */
+function pointCode(p) {
+  if (p.code) return p.code;
+  const m = p.gateway && p.gateway.match(/\(([A-Z]{3})\)/);
+  return m ? m[1] : null;
+}
+
+function labelForCode(code) {
+  const hit = resolveCity(code);
+  return hit && hit.code ? `${hit.name} (${hit.code})` : code;
+}
+
+/* In-app jumps from a route into the live Flights / Stays tabs. */
+function goToFlights(fromCode, toCode) {
+  $("#fly-from").value = labelForCode(fromCode);
+  $("#fly-to").value = labelForCode(toCode);
+  document.querySelector('[data-panel="panel-flights"]').click();
+  renderFlightResult();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+function goToStays(city) {
+  $("#stay-city").value = city;
+  document.querySelector('[data-panel="panel-stays"]').click();
+  renderStayResult();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 function renderCustomRoute() {
   const out = $("#custom-route-result");
   if (!selectedCountries.length) { out.innerHTML = ""; return; }
@@ -444,6 +492,7 @@ function renderCustomRoute() {
   const style = $("#route-style").value;
   const styleIdx = style === "shoestring" ? 0 : 1;
   const budget = parseFloat($("#route-budget").value) || 0;
+  const startMonth = parseInt($("#route-start-month").value, 10) || 0;
   const origin = ORIGINS[parseInt($("#builder-origin").value, 10)];
   const totalDays = months * 30;
 
@@ -493,19 +542,49 @@ function renderCustomRoute() {
     ? `<p class="agent-tip">🏃 That's ${ordered.length} countries in ${months} month${months === 1 ? "" : "s"} — under ${Math.floor(avgStay)} days each once transit eats its share. Consider fewer countries or more time; slower is cheaper <em>and</em> better.</p>`
     : "";
 
+  // ---- seasonal timing ----
+  const dayOffsets = [];
+  let acc = 0;
+  for (let i = 0; i < ordered.length; i++) { dayOffsets.push(acc); acc += alloc[i]; }
+  const visitMonth = (start, i) => ((start - 1 + Math.floor((dayOffsets[i] + alloc[i] / 2) / 30)) % 12) + 1;
+
+  let bestScore = -1, bestM = 1;
+  for (let m = 1; m <= 12; m++) {
+    let sc = 0;
+    for (let i = 0; i < ordered.length; i++) if ((COUNTRIES[ordered[i]].best || []).includes(visitMonth(m, i))) sc++;
+    if (sc > bestScore) { bestScore = sc; bestM = m; }
+  }
+  const seasonNote = `<p class="agent-tip">🗓️ <strong>Best time to start:</strong> ${MON_FULL[bestM - 1]} — that lands ${bestScore} of ${ordered.length} ${ordered.length === 1 ? "country" : "countries"} in ideal season.${startMonth ? (startMonth === bestM ? ` You picked ${MON_FULL[startMonth - 1]} — nice, that's the sweet spot. ☀️` : ` You picked ${MON_FULL[startMonth - 1]} — check the badges below and consider shifting toward ${MON_FULL[bestM - 1]}.`) : ` Set “Leaving around” above and I'll season-check every stop.`}</p>`;
+
   const itinerary = legs.map((l, i) => {
+    const fc = pointCode(l.from), tc = pointCode(l.to);
+    const fareJump = (l.mode === "flight" && fc && tc)
+      ? `<button type="button" class="btn btn-go route-jump" data-jump="flight" data-from="${fc}" data-to="${tc}">✈️ Live fares →</button>` : "";
     const legLine = `
       <li>
         <span class="leg-mode">${l.mode === "flight" ? "✈️" : "🚌"}</span>
         <span class="leg-desc"><strong>${l.from.name.split(" (")[0].split(",")[0]} → ${l.to.name.split(",")[0]}</strong>${l.to.gateway ? ` <span class="leg-note">(land in ${l.to.gateway})</span>` : ""} · ~${fmt(l.est)}<br>
-        <span class="leg-note">${l.mode === "flight" ? `≈${l.km.toLocaleString("en-US")} km flight — track fares on the Flights tab` : `≈${l.km.toLocaleString("en-US")} km overland — bus or train, book on 12Go`}</span></span>
+        <span class="leg-note">${l.mode === "flight" ? `≈${l.km.toLocaleString("en-US")} km flight` : `≈${l.km.toLocaleString("en-US")} km overland — bus or train, book on 12Go`}</span></span>
+        ${fareJump}
       </li>`;
     const stopIdx = i; // leg i arrives at stop i (last leg arrives home)
-    const stayLine = stopIdx < ordered.length ? `
+    if (stopIdx >= ordered.length) return legLine;
+    const c = COUNTRIES[ordered[stopIdx]];
+    const bestLabel = formatMonths(c.best || []);
+    let seasonBadge = bestLabel ? `<span class="season-badge season-neutral">best: ${bestLabel}</span>` : "";
+    if (startMonth && c.best) {
+      const vm = visitMonth(startMonth, stopIdx);
+      seasonBadge = c.best.includes(vm)
+        ? `<span class="season-badge season-in">☀️ ${MON[vm - 1]}: in season</span>`
+        : `<span class="season-badge season-off">🌧️ ${MON[vm - 1]}: off-season (ideal ${bestLabel})</span>`;
+    }
+    const stayCity = c.gateway.split(" (")[0];
+    const stayLine = `
       <li class="stay-line">
         <span class="leg-mode">📍</span>
-        <span class="leg-desc"><strong>${ordered[stopIdx]}</strong> — ${alloc[stopIdx]} days · ~${fmt(alloc[stopIdx] * COUNTRIES[ordered[stopIdx]].daily[styleIdx])} on the ground (${fmt(COUNTRIES[ordered[stopIdx]].daily[styleIdx])}/day ${style})</span>
-      </li>` : "";
+        <span class="leg-desc"><strong>${ordered[stopIdx]}</strong> — ${alloc[stopIdx]} days · ~${fmt(alloc[stopIdx] * c.daily[styleIdx])} on the ground (${fmt(c.daily[styleIdx])}/day ${style}) ${seasonBadge}</span>
+        <button type="button" class="btn btn-go route-jump" data-jump="stay" data-city="${stayCity}">🛏️ Find stays →</button>
+      </li>`;
     return legLine + stayLine;
   }).join("");
 
@@ -520,9 +599,10 @@ function renderCustomRoute() {
         <div><span class="price-label">${months} mo on the ground (${style})</span><span class="price-big">${fmt(ground)}</span></div>
         <div class="grand"><span class="price-label">Estimated trip total</span><span class="price-big">${fmt(total)}</span></div>
       </div>
+      ${seasonNote}
       ${fitBadge}
       ${paceWarning}
-      <p class="fine-print">Fare estimates come from a distance + regional-budget-carrier model — treat them as planning numbers and check real fares (Flights tab) before locking anything in. Daily costs cover a ${style} bed, food, local transport and fun.</p>
+      <p class="fine-print">Tap <strong>Live fares</strong> or <strong>Find stays</strong> on any leg to price it for real. Fare estimates come from a distance + regional-budget-carrier model; daily costs cover a ${style} bed, food, local transport and fun. Season windows are typical dry/pleasant months.</p>
     </div>`;
 }
 
@@ -587,6 +667,15 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#route-style").addEventListener("change", rerenderAllRoutes);
   $("#route-region").addEventListener("change", renderRoutes);
   $("#route-budget").addEventListener("input", rerenderAllRoutes);
+  $("#route-start-month").addEventListener("change", renderCustomRoute);
+
+  // Jump from a route leg/stop into the live Flights / Stays tabs.
+  $("#custom-route-result").addEventListener("click", (e) => {
+    const btn = e.target.closest(".route-jump");
+    if (!btn) return;
+    if (btn.dataset.jump === "flight") goToFlights(btn.dataset.from, btn.dataset.to);
+    else goToStays(btn.dataset.city);
+  });
 
   $("#builder-add").addEventListener("click", addCountry);
   $("#builder-country").addEventListener("keydown", (e) => {

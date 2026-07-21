@@ -80,6 +80,9 @@ async function cached(request, ctx, seconds, produce) {
 const IATA = /^[A-Za-z]{3}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/* Never let a raw HTML/nginx error page leak into a response. */
+const cleanDetail = (s) => String(s || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+
 /* IATA carrier code → name, for providers that only return codes. */
 const AIRLINES = {
   AA: "American", DL: "Delta", UA: "United", AS: "Alaska", WN: "Southwest", B6: "JetBlue",
@@ -132,7 +135,7 @@ async function duffelFlights(env, { from, to, depart, ret }) {
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`upstream_${res.status}:${detail.slice(0, 300)}`);
+    throw new Error(`upstream_${res.status}:${cleanDetail(detail)}`);
   }
   const { data } = await res.json();
   return (data.offers || []).map((o) => {
@@ -169,7 +172,7 @@ async function tpQuery(env, { from, to, departAt, returnAt }) {
   const res = await fetch(`https://api.travelpayouts.com/aviasales/v3/prices_for_dates?${params}`);
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`upstream_${res.status}:${detail.slice(0, 300)}`);
+    throw new Error(`upstream_${res.status}:${cleanDetail(detail)}`);
   }
   const body = await res.json();
   return body.data || [];
@@ -188,7 +191,7 @@ async function tpGroupedByMonth(env, { from, to }) {
   const res = await fetch(`https://api.travelpayouts.com/aviasales/v3/grouped_prices?${params}`);
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`upstream_${res.status}:${detail.slice(0, 300)}`);
+    throw new Error(`upstream_${res.status}:${cleanDetail(detail)}`);
   }
   const body = await res.json();
   return Object.values(body.data || {}).filter((f) => f && f.price > 0);
@@ -284,11 +287,16 @@ async function hotels(request, url, env, ctx) {
       limit: "20",
       token: env.TRAVELPAYOUTS_TOKEN,
     });
-    const res = await fetch(`https://engine.hotellook.com/api/v2/cache.json?${params}`);
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      throw new Error(`upstream_${res.status}:${detail.slice(0, 300)}`);
+    // The Hotellook host is documented over http:// and its https vhost 404s;
+    // try https first, fall back to http, and never surface raw HTML.
+    let res, lastStatus = 0;
+    for (const scheme of ["https", "http"]) {
+      res = await fetch(`${scheme}://engine.hotellook.com/api/v2/cache.json?${params}`);
+      if (res.ok) break;
+      lastStatus = res.status;
+      res = null;
     }
+    if (!res) throw new Error(`upstream_${lastStatus}: hotel rates unavailable`);
     const body = await res.json();
     const nights = Math.max(1, Math.round((new Date(checkout) - new Date(checkin)) / 86_400_000));
     const hotels = (Array.isArray(body) ? body : [])
